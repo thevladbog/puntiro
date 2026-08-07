@@ -1,0 +1,27 @@
+.root {
+  display: flex;
+  gap: var(--puntiro-semantic-space-compact);
+  align-items: flex-start;
+  padding: var(--puntiro-semantic-space-compact);
+  color: var(--puntiro-semantic-color-text-primary);
+  background: var(--puntiro-semantic-color-surface-muted);
+  border: 2px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-control);
+}
+
+.online { border-color: var(--puntiro-semantic-color-success-default); }
+.offlineAllowed { border-color: var(--puntiro-semantic-color-warning-default); }
+.offlineExpired { border-color: var(--puntiro-semantic-color-danger-default); }
+
+.content {
+  display: grid;
+  gap: var(--puntiro-semantic-space-unit);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.state,
+.lastSync {
+  margin-inline-end: var(--puntiro-semantic-space-unit);
+  font-weight: 700;
+}

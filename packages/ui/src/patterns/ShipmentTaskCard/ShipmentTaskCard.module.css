@@ -1,0 +1,73 @@
+.root {
+  display: grid;
+  gap: var(--puntiro-semantic-space-compact);
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: var(--puntiro-control-min-block-size);
+  padding: var(--puntiro-semantic-space-comfortable);
+  overflow-wrap: anywhere;
+  text-align: start;
+  color: var(--puntiro-semantic-color-text-primary);
+  background: var(--puntiro-component-shipment-task-card-surface);
+  border: 2px solid var(--puntiro-component-shipment-task-card-border);
+  border-radius: var(--puntiro-component-shipment-task-card-radius);
+  transition: background var(--puntiro-semantic-motion-fast), border-color var(--puntiro-semantic-motion-fast);
+}
+
+.root:hover {
+  background: var(--puntiro-semantic-color-surface-muted);
+}
+
+.root:active {
+  border-color: var(--puntiro-semantic-color-action-primary);
+}
+
+.root:focus-visible {
+  outline: 2px solid var(--puntiro-semantic-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.selected {
+  background: var(--puntiro-component-shipment-task-card-selected);
+  border-color: var(--puntiro-semantic-color-action-primary);
+}
+
+.heading,
+.timestamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--puntiro-semantic-space-compact);
+  align-items: baseline;
+}
+
+.shipmentLabel,
+.timestampLabel,
+.selectedLabel {
+  font-family: var(--puntiro-semantic-font-label), monospace;
+  font-weight: 700;
+}
+
+.selectedLabel {
+  color: var(--puntiro-semantic-color-text-primary);
+}
+
+.timestamps {
+  color: var(--puntiro-semantic-color-text-secondary);
+}
+
+.timestamps > span {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--puntiro-semantic-space-unit);
+}
+
+.number {
+  font-family: var(--puntiro-semantic-font-label), monospace;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root { transition: none; }
+}

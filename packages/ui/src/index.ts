@@ -38,4 +38,9 @@ export type { InlineMessageProps } from './components/InlineMessage/InlineMessag
 export { ProgressIndicator } from './components/ProgressIndicator/ProgressIndicator';
 export type { ProgressIndicatorProps } from './components/ProgressIndicator/ProgressIndicator.types';
 
+export { ShipmentTaskCard } from './patterns/ShipmentTaskCard/ShipmentTaskCard';
+export type { ShipmentTaskCardProps, ShipmentTaskStatus } from './patterns/ShipmentTaskCard/ShipmentTaskCard.types';
+export { ConnectivityBanner } from './patterns/ConnectivityBanner/ConnectivityBanner';
+export type { ConnectivityBannerProps, ConnectivityState } from './patterns/ConnectivityBanner/ConnectivityBanner.types';
+
 export const puntiroUiVersion = '0.1.0' as const;
