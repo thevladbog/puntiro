@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 const config = {
   stories: ['../src/stories/**/*.stories.@(ts|tsx)'],
+  staticDirs: ['../public'],
   addons: ['@storybook/addon-docs', '@storybook/addon-a11y', '@storybook/addon-vitest'],
   framework: '@storybook/react-vite',
   viteFinal: async (viteConfig) => ({

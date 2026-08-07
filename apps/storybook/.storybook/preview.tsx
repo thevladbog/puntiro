@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react-vite';
 import { PuntiroProvider } from '@puntiro/ui';
 import type { InteractionMode, Locale } from '@puntiro/ui';
+import { docsTheme } from './theme';
 
 const preview = {
   globalTypes: {
@@ -26,6 +27,14 @@ const preview = {
   initialGlobals: {
     locale: 'ru',
     interactionMode: 'touch'
+  },
+  parameters: {
+    a11y: {
+      test: 'error'
+    },
+    docs: {
+      theme: docsTheme
+    }
   },
   decorators: [
     (Story, context) => (
