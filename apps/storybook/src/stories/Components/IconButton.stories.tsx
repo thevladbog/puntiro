@@ -26,6 +26,14 @@ export const Default: Story = {
 export const Danger: Story = { args: { label: 'Удалить', icon: 'error', variant: 'danger' } };
 export const Ghost: Story = { args: { variant: 'ghost' } };
 export const Disabled: Story = { args: { isDisabled: true } };
+export const Hover: Story = {
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole('button', { name: 'Закрыть' });
+    await userEvent.hover(button);
+    await expect(button).toHaveAttribute('data-hovered', 'true');
+    await userEvent.unhover(button);
+  }
+};
 export const English: Story = { globals: { locale: 'en' }, args: { label: 'Close' } };
 export const Touch: Story = { globals: { interactionMode: 'touch' } };
 export const Standard: Story = { globals: { interactionMode: 'standard' } };

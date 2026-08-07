@@ -5,4 +5,4 @@ import { Button } from '@puntiro/ui';
 
 <Meta title="Start" />
 
-<LocalizedArticle id="start"><StartLayout preview={<Button iconBefore="printer">Напечатать</Button>} /></LocalizedArticle>
+<LocalizedArticle id="start"><StartLayout preview={(locale) => <Button iconBefore="printer">{locale === 'ru' ? 'Напечатать' : 'Print'}</Button>} /></LocalizedArticle>

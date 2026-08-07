@@ -4,7 +4,7 @@ import { enContent } from './content.en';
 import { ruContent } from './content.ru';
 import { START_ACTIONS, StartLayout } from './StartLayout';
 import { PuntiroProvider } from '@puntiro/ui';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const articles = [
@@ -78,8 +78,19 @@ it('assembles the Start preview from a provided live control', () => {
 
   expect(html).toContain('<button type="button">Напечатать</button>');
   expect(source).toContain("import { Button } from '@puntiro/ui';");
-  expect(source).toContain('<StartLayout preview={<Button');
+  expect(source).toContain('<StartLayout preview={(locale) => <Button');
   expect(source).not.toContain('Компоненты появятся здесь после их реализации.');
+});
+
+it('localizes the typed Start Button preview with the provider locale', () => {
+  const preview = ((locale: 'ru' | 'en') => createElement('button', { type: 'button' }, locale === 'ru' ? 'Напечатать' : 'Print')) as unknown as ReactNode;
+  const ruHtml = renderToStaticMarkup(createElement(PuntiroProvider, { locale: 'ru' }, createElement(StartLayout, { preview })));
+  const enHtml = renderToStaticMarkup(createElement(PuntiroProvider, { locale: 'en' }, createElement(StartLayout, { preview })));
+  const source = readFileSync(new URL('./Start.mdx', import.meta.url), 'utf8');
+
+  expect(ruHtml).toContain('Напечатать');
+  expect(enHtml).toContain('Print');
+  expect(source).toContain("locale === 'ru' ? 'Напечатать' : 'Print'");
 });
 
 it('documents the localization and icon accessibility contracts in both locales', () => {

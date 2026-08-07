@@ -12,21 +12,10 @@ import {
   TriangleAlert,
   X
 } from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
 
-const iconRegistry = {
-  archive: Archive,
-  check: Check,
-  chevronDown: ChevronDown,
-  close: X,
-  connection: Cable,
-  error: CircleAlert,
-  minus: Minus,
-  plus: Plus,
-  printer: Printer,
-  refresh: RefreshCw,
-  search: Search,
-  warning: TriangleAlert
-} as const;
+type PuntiroGlyphProps = Pick<SVGProps<SVGSVGElement>, 'aria-hidden' | 'className' | 'focusable' | 'strokeWidth'>;
+type PuntiroGlyph = ComponentType<PuntiroGlyphProps>;
 
 export const iconNames = [
   'archive',
@@ -45,6 +34,21 @@ export const iconNames = [
 
 export type IconName = typeof iconNames[number];
 
-export function getIcon(name: IconName) {
+const iconRegistry: Record<IconName, PuntiroGlyph> = {
+  archive: Archive,
+  check: Check,
+  chevronDown: ChevronDown,
+  close: X,
+  connection: Cable,
+  error: CircleAlert,
+  minus: Minus,
+  plus: Plus,
+  printer: Printer,
+  refresh: RefreshCw,
+  search: Search,
+  warning: TriangleAlert
+};
+
+export function getIcon(name: IconName): PuntiroGlyph {
   return iconRegistry[name];
 }

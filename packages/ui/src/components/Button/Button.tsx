@@ -18,13 +18,15 @@ export function Button({
   const isUnavailable = isDisabled || isLoading;
   const progressLabel = loadingLabel ?? (locale === 'ru' ? 'Выполняется' : 'In progress');
   const pressProps = !isUnavailable && onPress ? { onPress } : {};
+  const primaryActionProps = variant === 'primary' ? { 'data-primary-action': 'true' } : {};
+  const className = ['puntiro-control', styles.root, styles[variant]].filter(Boolean).join(' ');
 
   return <AriaButton
     type={type}
     isDisabled={isUnavailable}
     {...pressProps}
-    className={`puntiro-control ${styles.root} ${styles[variant]}`}
-    data-primary-action={variant === 'primary' ? 'true' : undefined}
+    {...primaryActionProps}
+    className={className}
   >
     {iconBefore ? <PuntiroIcon name={iconBefore} /> : null}
     <span className={styles.label}>{children}</span>

@@ -17,4 +17,10 @@ describe('Button', () => {
     const html = renderToStaticMarkup(<PuntiroProvider mode="standard"><Button>Сохранить</Button></PuntiroProvider>);
     expect(html).toContain('puntiro-control');
   });
+
+  it('does not render an undefined class or primary-action attribute for secondary buttons', () => {
+    const html = renderToStaticMarkup(<PuntiroProvider><Button variant="secondary">Сохранить</Button></PuntiroProvider>);
+    expect(html).not.toContain('undefined');
+    expect(html).not.toContain('data-primary-action');
+  });
 });

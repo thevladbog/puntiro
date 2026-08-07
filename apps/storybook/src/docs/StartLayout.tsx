@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { usePuntiro } from '@puntiro/ui';
+import type { Locale } from '@puntiro/ui';
 import './start.css';
 
 const labels = {
@@ -12,9 +13,12 @@ export const START_ACTIONS = [
   { id: 'foundations-tokens--docs', href: './?path=/docs/foundations-tokens--docs', label: 'tokensAction' },
 ] as const;
 
-export function StartLayout({ preview }: { preview?: ReactNode }) {
+type StartPreview = ReactNode | ((locale: Locale) => ReactNode);
+
+export function StartLayout({ preview }: { preview?: StartPreview }) {
   const { locale } = usePuntiro();
   const copy = labels[locale];
+  const renderedPreview = typeof preview === 'function' ? preview(locale) : preview;
 
   return <>
     <nav className="puntiro-start__actions" aria-label={copy.map}>
@@ -24,6 +28,6 @@ export function StartLayout({ preview }: { preview?: ReactNode }) {
       <h2 id="puntiro-system-map">{copy.map}</h2>
       <div>{[[copy.brand, copy.brandCopy], [copy.behavior, copy.behaviorCopy], [copy.patterns, copy.patternsCopy], [copy.rules, copy.rulesCopy]].map(([title, body]) => <section key={title}><h3>{title}</h3><p>{body}</p></section>)}</div>
     </section>
-    {preview ? <aside className="puntiro-start__preview" aria-label={copy.preview}><strong>{copy.preview}</strong>{preview}</aside> : null}
+    {renderedPreview ? <aside className="puntiro-start__preview" aria-label={copy.preview}><strong>{copy.preview}</strong>{renderedPreview}</aside> : null}
   </>;
 }

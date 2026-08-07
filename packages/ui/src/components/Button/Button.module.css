@@ -45,6 +45,16 @@
   transform: translateY(1px);
 }
 
+.root[data-hovered]:not([data-disabled]) {
+  border-color: var(--puntiro-semantic-color-action-primary);
+}
+
+.root:focus-visible {
+  outline: 2px solid var(--puntiro-semantic-color-text-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--puntiro-semantic-color-focus-ring), 0 0 0 6px var(--puntiro-semantic-color-focus-offset);
+}
+
 .root[data-disabled] {
   background: var(--puntiro-component-button-disabled-background);
   border-color: var(--puntiro-semantic-color-disabled-border);

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, within } from 'storybook/test';
+import { expect, fireEvent, fn, userEvent, within } from 'storybook/test';
 import { Button } from '@puntiro/ui';
 import { createDocsPage } from '../../docs/ComponentDocsPage';
 import { buttonDocumentation } from './button.docs';
@@ -37,7 +37,25 @@ export const FocusVisible: Story = {
     await expect(within(canvasElement).getByRole('button', { name: 'Напечатать' })).toHaveFocus();
   }
 };
-export const Pressed: Story = { args: { children: 'Удерживать' } };
+export const Pressed: Story = {
+  args: { children: 'Удерживать' },
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole('button', { name: 'Удерживать' });
+    button.focus();
+    await expect(button).toHaveFocus();
+    await userEvent.keyboard('[Space>]');
+    await expect(button).toHaveAttribute('data-pressed', 'true');
+    fireEvent.keyUp(button, { key: ' ', code: 'Space', charCode: 32 });
+  }
+};
+export const Hover: Story = {
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole('button', { name: 'Напечатать' });
+    await userEvent.hover(button);
+    await expect(button).toHaveAttribute('data-hovered', 'true');
+    await userEvent.unhover(button);
+  }
+};
 export const Disabled: Story = { args: { isDisabled: true } };
 export const Loading: Story = {
   args: { isLoading: true, loadingLabel: 'Печать выполняется' },
