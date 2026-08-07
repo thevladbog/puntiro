@@ -3,8 +3,9 @@ import { expect, it } from 'vitest';
 import { enContent } from './content.en';
 import { ruContent } from './content.ru';
 import { START_ACTIONS, StartLayout } from './StartLayout';
+import { StartPreview } from './StartPreview';
 import { PuntiroProvider } from '@puntiro/ui';
-import { createElement, type ReactNode } from 'react';
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const articles = [
@@ -74,25 +75,22 @@ it('assembles the Start preview from a provided live control', () => {
       preview: createElement('button', { type: 'button' }, 'Напечатать')
     })),
   );
-  const source = readFileSync(new URL('./Start.mdx', import.meta.url), 'utf8');
 
   expect(html).toContain('<button type="button">Напечатать</button>');
-  expect(source).toContain("import { Button, StatusBadge } from '@puntiro/ui';");
-  expect(source).toContain('<StartLayout preview={(locale) => <div');
-  expect(source).toContain('<StatusBadge tone="success"');
-  expect(source).not.toContain('Компоненты появятся здесь после их реализации.');
 });
 
-it('localizes the typed Start Button preview with the provider locale', () => {
-  const preview = ((locale: 'ru' | 'en') => createElement('button', { type: 'button' }, locale === 'ru' ? 'Напечатать' : 'Print')) as unknown as ReactNode;
-  const ruHtml = renderToStaticMarkup(createElement(PuntiroProvider, { locale: 'ru' }, createElement(StartLayout, { preview })));
-  const enHtml = renderToStaticMarkup(createElement(PuntiroProvider, { locale: 'en' }, createElement(StartLayout, { preview })));
-  const source = readFileSync(new URL('./Start.mdx', import.meta.url), 'utf8');
+it('renders localized public Button and StatusBadge controls in the Start preview', () => {
+  const ruHtml = renderToStaticMarkup(createElement(PuntiroProvider, { locale: 'ru' }, createElement(StartPreview)));
+  const enHtml = renderToStaticMarkup(createElement(PuntiroProvider, { locale: 'en' }, createElement(StartPreview)));
 
+  expect(ruHtml).toContain('<button');
   expect(ruHtml).toContain('Напечатать');
+  expect(ruHtml).toContain('role="status"');
+  expect(ruHtml).toContain('Готов к печати');
+  expect(enHtml).toContain('<button');
   expect(enHtml).toContain('Print');
-  expect(source).toContain("locale === 'ru' ? 'Напечатать' : 'Print'");
-  expect(source).toContain("locale === 'ru' ? 'Готов к печати' : 'Ready to print'");
+  expect(enHtml).toContain('role="status"');
+  expect(enHtml).toContain('Ready to print');
 });
 
 it('documents the localization and icon accessibility contracts in both locales', () => {

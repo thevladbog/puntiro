@@ -3,6 +3,7 @@ import { expect, within } from 'storybook/test';
 import { InlineMessage } from '@puntiro/ui';
 import { createDocsPage } from '../../docs/ComponentDocsPage';
 import { inlineMessageDocumentation } from './feedback.docs';
+import { expectReducedMotionEnvironment, reducedMotionParameters } from '../reducedMotion';
 
 const meta = {
   title: 'Components/InlineMessage',
@@ -31,6 +32,7 @@ export const Danger: Story = {
   }
 };
 export const Monochrome: Story = { args: { tone: 'neutral', title: 'Проверено текстом и иконкой' } };
-export const LongContent: Story = { args: { title: 'Проверьте маркировочные коды выбранной отгрузки перед запуском печати', children: 'Сообщение остается читаемым целиком и объясняет следующий шаг без скрытого жеста.' } };
+export const LongRussianContent: Story = { args: { title: 'Проверьте маркировочные коды выбранной отгрузки перед запуском печати', children: 'Сообщение остается читаемым целиком и объясняет следующий шаг без скрытого жеста.' } };
+export const LongEnglishContent: Story = { globals: { locale: 'en' }, args: { title: 'Check the selected shipment marking codes before starting the print run', children: 'The message remains fully readable and explains the next step without a hidden gesture.' } };
 export const English: Story = { globals: { locale: 'en' }, args: { title: 'Check the printer', children: 'Load paper and retry printing.' } };
-export const ReducedMotion: Story = { parameters: { chromatic: { disableSnapshot: false } } };
+export const ReducedMotion: Story = { parameters: reducedMotionParameters, play: ({ canvasElement }) => expectReducedMotionEnvironment(canvasElement) };

@@ -11,6 +11,10 @@
       "focus": {
         "ring": { "$type": "color", "$value": "{reference.color.handoffOrange}", "$description": "Keyboard focus ring." },
         "offset": { "$type": "color", "$value": "{reference.color.labelPaperStrong}", "$description": "Keyboard focus offset." }
+      },
+      "progress": {
+        "track": { "$type": "color", "$value": "{reference.color.labelPaper}", "$description": "Progress track with high contrast against the fill." },
+        "fill": { "$type": "color", "$value": "{reference.color.registerInk}", "$description": "Progress fill with high contrast against the track." }
       }
     },
     "size": {
@@ -18,6 +22,11 @@
         "touch": { "$type": "dimension", "$value": "{reference.size.touch.minimum}", "$description": "Touch control block size." },
         "standard": { "$type": "dimension", "$value": "{reference.size.touch.standard}", "$description": "Standard control block size." }
       }
+    },
+    "space": {
+      "unit": { "$type": "dimension", "$value": "{reference.space.unit}", "$description": "Base interface spacing." },
+      "compact": { "$type": "dimension", "$value": "{reference.space.2}", "$description": "Compact component spacing." },
+      "comfortable": { "$type": "dimension", "$value": "{reference.space.3}", "$description": "Comfortable component spacing." }
     },
     "radius": {
       "label": { "$type": "dimension", "$value": "{reference.radius.label}", "$description": "Label corner radius." },

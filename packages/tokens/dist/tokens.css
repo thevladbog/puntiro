@@ -30,6 +30,8 @@
   --puntiro-semantic-color-selected-background: var(--puntiro-reference-color-handoff-orange-soft); /** Selected background. */
   --puntiro-semantic-color-focus-ring: var(--puntiro-reference-color-handoff-orange); /** Keyboard focus ring. */
   --puntiro-semantic-color-focus-offset: var(--puntiro-reference-color-label-paper-strong); /** Keyboard focus offset. */
+  --puntiro-semantic-color-progress-track: var(--puntiro-reference-color-label-paper); /** Progress track with high contrast against the fill. */
+  --puntiro-semantic-color-progress-fill: var(--puntiro-reference-color-register-ink); /** Progress fill with high contrast against the track. */
   --puntiro-semantic-color-canvas-default: var(--puntiro-reference-color-label-paper); /** Default application canvas. */
   --puntiro-semantic-color-surface-default: var(--puntiro-reference-color-label-paper-strong); /** Default content surface. */
   --puntiro-semantic-color-surface-muted: var(--puntiro-reference-color-label-paper); /** Muted content surface. */
@@ -45,6 +47,9 @@
   --puntiro-semantic-color-disabled-border: var(--puntiro-reference-color-registration-line); /** Disabled border. */
   --puntiro-semantic-size-control-touch: var(--puntiro-reference-size-touch-minimum); /** Touch control block size. */
   --puntiro-semantic-size-control-standard: var(--puntiro-reference-size-touch-standard); /** Standard control block size. */
+  --puntiro-semantic-space-unit: var(--puntiro-reference-space-unit); /** Base interface spacing. */
+  --puntiro-semantic-space-compact: var(--puntiro-reference-space-2); /** Compact component spacing. */
+  --puntiro-semantic-space-comfortable: var(--puntiro-reference-space-3); /** Comfortable component spacing. */
   --puntiro-semantic-radius-label: var(--puntiro-reference-radius-label); /** Label corner radius. */
   --puntiro-semantic-radius-control: var(--puntiro-reference-radius-control); /** Control corner radius. */
   --puntiro-semantic-radius-surface: var(--puntiro-reference-radius-surface); /** Surface corner radius. */

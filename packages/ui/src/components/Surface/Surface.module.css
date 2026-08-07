@@ -17,5 +17,5 @@
 }
 
 .none { padding: 0; }
-.compact { padding: var(--puntiro-reference-space-2); }
-.comfortable { padding: var(--puntiro-reference-space-3); }
+.compact { padding: var(--puntiro-semantic-space-compact); }
+.comfortable { padding: var(--puntiro-semantic-space-comfortable); }

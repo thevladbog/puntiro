@@ -3,6 +3,12 @@ import { PuntiroProvider } from '@puntiro/ui';
 import type { InteractionMode, Locale } from '@puntiro/ui';
 import { docsTheme } from './theme';
 
+type PuntiroStoryParameters = {
+  puntiro?: {
+    reducedMotion?: boolean;
+  };
+};
+
 const preview = {
   globalTypes: {
     locale: {
@@ -37,14 +43,18 @@ const preview = {
     }
   },
   decorators: [
-    (Story, context) => (
-      <PuntiroProvider
+    (Story, context) => {
+      const parameters = context.parameters as PuntiroStoryParameters;
+      const reducedMotion = parameters.puntiro?.reducedMotion === true;
+      const environmentProps = reducedMotion ? { 'data-puntiro-reduced-motion': 'true' } : {};
+
+      return <PuntiroProvider
         locale={context.globals.locale as Locale}
         mode={context.globals.interactionMode as InteractionMode}
       >
-        <Story />
-      </PuntiroProvider>
-    )
+        <div {...environmentProps}><Story /></div>
+      </PuntiroProvider>;
+    }
   ]
 } satisfies Preview;
 

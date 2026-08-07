@@ -1,7 +1,7 @@
 .root { color: var(--puntiro-semantic-color-text-primary); display: grid; gap: 0.5rem; }
-.header { align-items: baseline; display: flex; gap: var(--puntiro-reference-space-unit); justify-content: space-between; }
+.header { align-items: baseline; display: flex; gap: var(--puntiro-semantic-space-unit); justify-content: space-between; }
 .counter { font: 700 0.75rem/1.25 var(--puntiro-semantic-font-label), monospace; white-space: nowrap; }
-.progress { accent-color: var(--puntiro-semantic-color-action-primary); block-size: 0.75rem; inline-size: 100%; }
-.progress::-webkit-progress-bar { background: var(--puntiro-semantic-color-surface-muted); border: 1px solid var(--puntiro-semantic-color-border-default); border-radius: var(--puntiro-semantic-radius-label); }
-.progress::-webkit-progress-value { background: var(--puntiro-semantic-color-action-primary); border-radius: var(--puntiro-semantic-radius-label); }
-.progress::-moz-progress-bar { background: var(--puntiro-semantic-color-action-primary); border-radius: var(--puntiro-semantic-radius-label); }
+.progress { accent-color: var(--puntiro-semantic-color-progress-fill); block-size: 0.75rem; inline-size: 100%; }
+.progress::-webkit-progress-bar { background: var(--puntiro-semantic-color-progress-track); border: 1px solid var(--puntiro-semantic-color-border-default); border-radius: var(--puntiro-semantic-radius-label); }
+.progress::-webkit-progress-value { background: var(--puntiro-semantic-color-progress-fill); border-radius: var(--puntiro-semantic-radius-label); }
+.progress::-moz-progress-bar { background: var(--puntiro-semantic-color-progress-fill); border-radius: var(--puntiro-semantic-radius-label); }

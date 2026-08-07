@@ -6,7 +6,7 @@
   color: var(--puntiro-semantic-color-text-primary);
   display: flex;
   gap: 0.75rem;
-  padding: var(--puntiro-reference-space-2);
+  padding: var(--puntiro-semantic-space-compact);
 }
 
 .root :global(svg) { margin-block-start: 0.125rem; }

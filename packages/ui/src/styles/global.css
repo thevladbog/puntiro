@@ -20,6 +20,11 @@
   --puntiro-control-min-block-size: var(--puntiro-semantic-size-control-standard);
 }
 
+[data-puntiro-reduced-motion='true'] {
+  --puntiro-semantic-motion-fast: 0ms;
+  --puntiro-semantic-motion-confirm: 0ms;
+}
+
 :focus-visible {
   outline: 2px solid var(--puntiro-semantic-color-focus-ring);
   outline-offset: 2px;

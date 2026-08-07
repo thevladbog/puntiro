@@ -41,13 +41,18 @@ const semanticAliasContracts = [
   ['interaction', 'semantic.color.action.primary', '{reference.color.handoffOrange}'],
   ['interaction', 'semantic.color.selected.background', '{reference.color.handoffOrangeSoft}'],
   ['interaction', 'semantic.color.focus.ring', '{reference.color.handoffOrange}'],
+  ['interaction', 'semantic.color.progress.track', '{reference.color.labelPaper}'],
+  ['interaction', 'semantic.color.progress.fill', '{reference.color.registerInk}'],
   ['product', 'semantic.color.success.default', '{reference.color.statusOk}'],
   ['product', 'semantic.color.warning.default', '{reference.color.statusWarning}'],
   ['product', 'semantic.color.danger.default', '{reference.color.statusDanger}'],
   ['product', 'semantic.color.disabled.background', '{reference.color.warehouseSteel}'],
   ['interaction', 'semantic.radius.label', '{reference.radius.label}'],
   ['interaction', 'semantic.radius.control', '{reference.radius.control}'],
-  ['interaction', 'semantic.radius.surface', '{reference.radius.surface}']
+  ['interaction', 'semantic.radius.surface', '{reference.radius.surface}'],
+  ['interaction', 'semantic.space.unit', '{reference.space.unit}'],
+  ['interaction', 'semantic.space.compact', '{reference.space.2}'],
+  ['interaction', 'semantic.space.comfortable', '{reference.space.3}']
 ] as const;
 
 const componentNames = ['Button', 'NumberInput', 'Dialog', 'ShipmentTaskCard', 'PrinterPicker'];
@@ -125,7 +130,13 @@ describe('Puntiro token contracts', () => {
       '--puntiro-semantic-color-action-primary: var(--puntiro-reference-color-handoff-orange);'
     );
     expect(css).toContain('--puntiro-component-button-radius: var(--puntiro-semantic-radius-control);');
+    expect(css).toContain('--puntiro-semantic-color-progress-track: var(--puntiro-reference-color-label-paper);');
+    expect(css).toContain('--puntiro-semantic-color-progress-fill: var(--puntiro-reference-color-register-ink);');
+    expect(css).toContain('--puntiro-semantic-space-compact: var(--puntiro-reference-space-2);');
     expect(json).toHaveProperty('semantic.color.action.primary', '#FF5A1F');
+    expect(json).toHaveProperty('semantic.color.progress.track', '#F2F0E8');
+    expect(json).toHaveProperty('semantic.color.progress.fill', '#171914');
+    expect(json).toHaveProperty('semantic.space.comfortable', { value: 24, unit: 'px' });
     expect(json).toHaveProperty('semantic.radius.control', { value: 12, unit: 'px' });
     expect(json).toHaveProperty('component.Button.radius', { value: 12, unit: 'px' });
   });

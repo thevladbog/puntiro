@@ -89,6 +89,10 @@ export const tokens = {
         "ring": "#ff5a1f",
         "offset": "#fffdf6"
       },
+      "progress": {
+        "track": "#f2f0e8",
+        "fill": "#171914"
+      },
       "canvas": {
         "default": "#f2f0e8"
       },
@@ -124,6 +128,11 @@ export const tokens = {
         "touch": "64px",
         "standard": "44px"
       }
+    },
+    "space": {
+      "unit": "8px",
+      "compact": "16px",
+      "comfortable": "24px"
     },
     "radius": {
       "label": "4px",

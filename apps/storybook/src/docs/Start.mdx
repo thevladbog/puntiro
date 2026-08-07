@@ -1,8 +1,8 @@
 import { Meta } from '@storybook/addon-docs/blocks';
 import { LocalizedArticle } from './LocalizedArticle';
 import { StartLayout } from './StartLayout';
-import { Button, StatusBadge } from '@puntiro/ui';
+import { StartPreview } from './StartPreview';
 
 <Meta title="Start" />
 
-<LocalizedArticle id="start"><StartLayout preview={(locale) => <div className="puntiro-start__preview-controls"><Button iconBefore="printer">{locale === 'ru' ? 'Напечатать' : 'Print'}</Button><StatusBadge tone="success" label={locale === 'ru' ? 'Готов к печати' : 'Ready to print'} /></div>} /></LocalizedArticle>
+<LocalizedArticle id="start"><StartLayout preview={(locale) => <StartPreview locale={locale} />} /></LocalizedArticle>

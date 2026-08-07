@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Surface } from '@puntiro/ui';
 import { createDocsPage } from '../../docs/ComponentDocsPage';
 import { surfaceDocumentation } from './feedback.docs';
+import { expectReducedMotionEnvironment, reducedMotionParameters } from '../reducedMotion';
 
 const meta = {
   title: 'Components/Surface',
@@ -21,5 +22,6 @@ export const Outlined: Story = { args: { variant: 'outlined' } };
 export const Compact: Story = { args: { padding: 'compact' } };
 export const Comfortable: Story = { args: { padding: 'comfortable' } };
 export const Article: Story = { args: { as: 'article' } };
-export const LongContent: Story = { args: { children: 'Проверьте маркировочные коды перед печатью: длинное сообщение остается полностью доступным и не требует скрытого жеста для чтения.' } };
-export const ReducedMotion: Story = { parameters: { chromatic: { disableSnapshot: false } } };
+export const LongRussianContent: Story = { args: { children: 'Проверьте маркировочные коды перед печатью: длинное сообщение остается полностью доступным и не требует скрытого жеста для чтения.' } };
+export const LongEnglishContent: Story = { globals: { locale: 'en' }, args: { children: 'Check the marking codes before printing: this longer operational message remains fully available without a hidden gesture or a clipped instruction.' } };
+export const ReducedMotion: Story = { parameters: reducedMotionParameters, play: ({ canvasElement }) => expectReducedMotionEnvironment(canvasElement) };
