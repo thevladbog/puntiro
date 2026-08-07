@@ -7,8 +7,8 @@ const labels = {
 } as const;
 
 export const START_ACTIONS = [
-  { id: 'foundations-brand--docs', href: '?path=/docs/foundations-brand--docs', label: 'brandAction' },
-  { id: 'foundations-tokens--docs', href: '?path=/docs/foundations-tokens--docs', label: 'tokensAction' },
+  { id: 'foundations-brand--docs', href: './?path=/docs/foundations-brand--docs', label: 'brandAction' },
+  { id: 'foundations-tokens--docs', href: './?path=/docs/foundations-tokens--docs', label: 'tokensAction' },
 ] as const;
 
 export function StartLayout() {

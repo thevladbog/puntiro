@@ -40,15 +40,30 @@ it('indexes every article as a minimal localized MDX document', () => {
 });
 
 it('keeps Start navigation pointed at indexed Storybook documentation entries', () => {
-  const index = readFileSync(new URL('../../storybook-static/index.json', import.meta.url), 'utf8');
   const html = renderToStaticMarkup(
     createElement(PuntiroProvider, null, createElement(StartLayout)),
   );
+  const documentationIds = new Set(articles.map(([file]) => {
+    const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+    const title = source.match(/<Meta title="([^"]+)"/u)?.[1];
+
+    expect(title).toBeTruthy();
+    return `${title?.toLowerCase().replace('/', '-')}--docs`;
+  }));
 
   for (const action of START_ACTIONS) {
-    expect(index).toContain(`"${action.id}"`);
-    expect(action.href).toBe(`?path=/docs/${action.id}`);
+    expect(documentationIds).toContain(action.id);
+    expect(action.href).toBe(`./?path=/docs/${action.id}`);
     expect(html).toContain(`href="${action.href}"`);
+
+    for (const [base, pathname] of [
+      ['https://example.test/iframe.html?id=start--docs', '/'],
+      ['https://example.test/subpath/iframe.html?id=start--docs', '/subpath/'],
+    ]) {
+      const resolved = new URL(action.href, base);
+      expect(resolved.pathname).toBe(pathname);
+      expect(resolved.searchParams.get('path')).toBe(`/docs/${action.id}`);
+    }
   }
   expect(html).toContain('target="_top"');
 });
