@@ -1,0 +1,119 @@
+.root {
+  display: grid;
+  gap: var(--puntiro-semantic-space-compact);
+  inline-size: min(100%, 48rem);
+  min-inline-size: 0;
+}
+
+.label {
+  color: var(--puntiro-semantic-color-text-primary);
+  font: 700 1rem/1.25 var(--puntiro-semantic-font-label), monospace;
+}
+
+.options {
+  display: grid;
+  gap: var(--puntiro-semantic-space-compact);
+}
+
+.option {
+  align-items: center;
+  background: var(--puntiro-component-printer-picker-surface);
+  border: 2px solid var(--puntiro-component-printer-picker-border);
+  border-radius: var(--puntiro-component-printer-picker-radius);
+  color: var(--puntiro-semantic-color-text-primary);
+  cursor: pointer;
+  display: grid;
+  gap: var(--puntiro-semantic-space-compact);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-block-size: var(--puntiro-control-min-block-size);
+  min-inline-size: 0;
+  padding: var(--puntiro-semantic-space-compact) var(--puntiro-semantic-space-comfortable);
+  transition: background-color var(--puntiro-semantic-motion-fast) ease, border-color var(--puntiro-semantic-motion-fast) ease;
+}
+
+.input {
+  block-size: 1px;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  inline-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+}
+
+.option:hover:not([data-disabled]) {
+  background: var(--puntiro-semantic-color-surface-muted);
+}
+
+.option:active:not([data-disabled]) {
+  border-color: var(--puntiro-semantic-color-action-primary);
+}
+
+.option[data-selected] {
+  background: var(--puntiro-component-printer-picker-selected);
+  border-color: var(--puntiro-semantic-color-action-primary);
+}
+
+.option:has(.input:focus-visible) {
+  outline: 2px solid var(--puntiro-semantic-color-text-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--puntiro-component-printer-picker-focus), 0 0 0 6px var(--puntiro-semantic-color-focus-offset);
+}
+
+.option[data-disabled] {
+  background: var(--puntiro-semantic-color-disabled-background);
+  color: var(--puntiro-semantic-color-disabled-foreground);
+  cursor: not-allowed;
+}
+
+.radioMark {
+  background: var(--puntiro-semantic-color-surface-primary);
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  block-size: 1.5rem;
+  box-shadow: inset 0 0 0 0.3rem var(--puntiro-semantic-color-surface-primary);
+  inline-size: 1.5rem;
+}
+
+.option[data-selected] .radioMark {
+  background: var(--puntiro-semantic-color-action-primary);
+}
+
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--puntiro-semantic-space-unit);
+  min-inline-size: 0;
+}
+
+.name {
+  font: 700 1.125rem/1.35 var(--puntiro-semantic-font-body), sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.language {
+  color: var(--puntiro-semantic-color-text-secondary);
+  font: 700 0.875rem/1.35 var(--puntiro-semantic-font-label), monospace;
+}
+
+.empty {
+  color: var(--puntiro-semantic-color-text-secondary);
+  font: 500 1rem/1.5 var(--puntiro-semantic-font-body), sans-serif;
+  margin: 0;
+}
+
+@media (max-width: 36rem) {
+  .option {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .option > :last-child {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .option { transition: none; }
+}

@@ -42,5 +42,14 @@ export { ShipmentTaskCard } from './patterns/ShipmentTaskCard/ShipmentTaskCard';
 export type { ShipmentTaskCardProps, ShipmentTaskStatus } from './patterns/ShipmentTaskCard/ShipmentTaskCard.types';
 export { ConnectivityBanner } from './patterns/ConnectivityBanner/ConnectivityBanner';
 export type { ConnectivityBannerProps, ConnectivityState } from './patterns/ConnectivityBanner/ConnectivityBanner.types';
+export { PlaceCounter } from './patterns/PlaceCounter/PlaceCounter';
+export type { PlaceCounterProps } from './patterns/PlaceCounter/PlaceCounter.types';
+export { PrinterPicker } from './patterns/PrinterPicker/PrinterPicker';
+export type {
+  PrinterLanguage,
+  PrinterOption,
+  PrinterPickerProps,
+  PrinterState
+} from './patterns/PrinterPicker/PrinterPicker.types';
 
 export const puntiroUiVersion = '0.1.0' as const;
