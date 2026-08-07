@@ -64,10 +64,12 @@ it('adds a decorative swatch to every complete color-table row', () => {
     <PuntiroProvider><TokenGallery group="color" /></PuntiroProvider>,
   );
   const colorCount = collectLeafCount(generatedTokens.semantic.color);
+  const swatches = html.match(/<span\b(?=[^>]*\bclass="[^"]*\bpuntiro-token-swatch\b[^"]*")[^>]*>/g) ?? [];
 
   expect(html.match(/data-color-token-row=/g)).toHaveLength(colorCount);
   expect(html.match(/data-color-table-swatch="true"/g)).toHaveLength(colorCount);
-  expect(html.match(/aria-hidden="true"/g)?.length).toBeGreaterThanOrEqual(colorCount);
+  expect(swatches.length).toBeGreaterThan(colorCount);
+  for (const swatch of swatches) expect(swatch).toContain('aria-hidden="true"');
   expect(html).toContain('<th scope="col">Preview</th>');
 });
 

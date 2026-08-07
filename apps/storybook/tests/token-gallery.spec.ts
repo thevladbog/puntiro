@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -36,10 +36,31 @@ const statusRolePaths = [
 
 const expectedColorTokens = collectColorTokens(generatedTokens.semantic.color);
 
-test('color token catalog renders the semantic gallery without horizontal overflow', async ({ page }) => {
+async function openColorDocs(page: Page) {
   const globals = encodeURIComponent('locale:ru;interactionMode:touch');
   await page.goto(`/iframe.html?id=foundations-color--docs&viewMode=docs&globals=${globals}`);
   await page.waitForFunction(() => document.fonts.status === 'loaded');
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => {
+    const gallery = document.querySelector<HTMLElement>('.puntiro-token-gallery');
+    if (!gallery) throw new Error('Missing token gallery');
+
+    return {
+      html: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+      body: [document.body.scrollWidth, document.body.clientWidth],
+      gallery: [gallery.scrollWidth, gallery.clientWidth],
+    };
+  });
+
+  expect(overflow.html[0]).toBe(overflow.html[1]);
+  expect(overflow.body[0]).toBe(overflow.body[1]);
+  expect(overflow.gallery[0]).toBe(overflow.gallery[1]);
+}
+
+test('color token catalog renders the semantic gallery without horizontal overflow', async ({ page }) => {
+  await openColorDocs(page);
 
   const gallery = page.locator('.puntiro-key-color-gallery');
   await expect(gallery).toBeVisible();
@@ -50,7 +71,25 @@ test('color token catalog renders the semantic gallery without horizontal overfl
   const statusCard = gallery.locator('[data-color-role-card="status"]');
   await expect(statusCard).toHaveCount(1);
   for (const path of statusRolePaths) {
-    await expect(statusCard.locator(`[data-token-path="${path}"]`)).toHaveCount(1);
+    const statusRole = statusCard.locator(`[data-token-path="${path}"]`);
+    await expect(statusRole).toHaveCount(1);
+    const contentRects = await statusRole.locator('span, code').evaluateAll((elements) => (
+      elements.flatMap((element) => {
+        const bounds = element.parentElement?.getBoundingClientRect() ?? element.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Array.from(range.getClientRects()).map((line) => ({
+          lineLeft: line.left,
+          lineRight: line.right,
+          boundsLeft: bounds.left,
+          boundsRight: bounds.right,
+        }));
+      })
+    ));
+    for (const rect of contentRects) {
+      expect(rect.lineLeft).toBeGreaterThanOrEqual(rect.boundsLeft);
+      expect(rect.lineRight).toBeLessThanOrEqual(rect.boundsRight);
+    }
   }
 
   const colorRows = page.locator('.puntiro-token-gallery table tbody > tr');
@@ -64,12 +103,29 @@ test('color token catalog renders the semantic gallery without horizontal overfl
     await expect(row.locator('td').nth(1)).toHaveText(token.value);
   }
 
-  const overflow = await page.evaluate(() => ({
-    html: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
-    body: [document.body.scrollWidth, document.body.clientWidth],
-  }));
-  expect(overflow.html[0]).toBe(overflow.html[1]);
-  expect(overflow.body[0]).toBe(overflow.body[1]);
+  await expectNoHorizontalOverflow(page);
 
-  await expect(page).toHaveScreenshot('token-gallery-ru.png', { animations: 'disabled' });
+  await expect(page).toHaveScreenshot('token-gallery-ru.png', {
+    animations: 'disabled',
+    fullPage: true,
+  });
 });
+
+for (const viewport of [
+  { width: 900, columns: 2 },
+  { width: 640, columns: 1 },
+]) {
+  test(`color role gallery uses ${viewport.columns} columns at ${viewport.width}px without horizontal overflow`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: 800 });
+    await openColorDocs(page);
+
+    const grid = page.locator('.puntiro-key-color-gallery__grid');
+    await expect(grid).toBeVisible();
+    const columns = await grid.evaluate((element) => (
+      getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length
+    ));
+    expect(columns).toBe(viewport.columns);
+
+    await expectNoHorizontalOverflow(page);
+  });
+}

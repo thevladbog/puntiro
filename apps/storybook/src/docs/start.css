@@ -30,7 +30,7 @@
 .puntiro-color-role__status-swatches > div { display: grid; gap: 6px; min-width: 0; padding-bottom: 16px; }
 .puntiro-color-role__status-swatches > div + div { border-left: 1px solid var(--puntiro-semantic-color-border-default); }
 .puntiro-color-role__status-swatches .puntiro-token-swatch { margin-bottom: 10px; min-height: 112px; }
-.puntiro-color-role__status-swatches span, .puntiro-color-role__status-swatches code { padding-inline: 10px; }
+.puntiro-color-role__status-swatches span, .puntiro-color-role__status-swatches code { overflow-wrap: anywhere; padding-inline: 10px; }
 .puntiro-token-swatch--table { border: 1px solid var(--puntiro-semantic-color-border-default); border-radius: var(--puntiro-semantic-radius-control); min-height: 32px; width: 48px; }
 .puntiro-token-gallery td:first-child { width: 64px; }
 @media (max-width: 960px) { .puntiro-key-color-gallery__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
