@@ -18,7 +18,7 @@ it('renders token names and values from generated data', () => {
   );
 
   expect(html).toContain('semantic.color.action.primary');
-  expect(html).toContain('#FF5A1F');
+  expect(html).toContain(generatedTokens.semantic.color.action.primary);
 });
 
 it('exposes only the documented token group union', () => {
