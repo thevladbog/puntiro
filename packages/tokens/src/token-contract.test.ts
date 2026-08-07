@@ -22,6 +22,8 @@ const approvedReferenceTokens = [
   ['reference.color.statusDanger', 'color', '#C93D33'],
   ['reference.font.sans', 'fontFamily', 'Onest'],
   ['reference.font.mono', 'fontFamily', 'IBM Plex Mono'],
+  ['reference.typography.kiosk.body', 'dimension', { value: 18, unit: 'px' }],
+  ['reference.typography.kiosk.number', 'dimension', { value: 24, unit: 'px' }],
   ['reference.space.unit', 'dimension', { value: 8, unit: 'px' }],
   ['reference.size.touch.minimum', 'dimension', { value: 64, unit: 'px' }],
   ['reference.size.touch.comfortable', 'dimension', { value: 72, unit: 'px' }],
@@ -46,6 +48,8 @@ const semanticAliasContracts = [
   ['product', 'semantic.color.success.default', '{reference.color.statusOk}'],
   ['product', 'semantic.color.warning.default', '{reference.color.statusWarning}'],
   ['product', 'semantic.color.danger.default', '{reference.color.statusDanger}'],
+  ['product', 'semantic.typography.kiosk.body', '{reference.typography.kiosk.body}'],
+  ['product', 'semantic.typography.kiosk.number', '{reference.typography.kiosk.number}'],
   ['product', 'semantic.color.disabled.background', '{reference.color.warehouseSteel}'],
   ['interaction', 'semantic.radius.label', '{reference.radius.label}'],
   ['interaction', 'semantic.radius.control', '{reference.radius.control}'],
@@ -55,13 +59,14 @@ const semanticAliasContracts = [
   ['interaction', 'semantic.space.comfortable', '{reference.space.3}']
 ] as const;
 
-const componentNames = ['Button', 'NumberInput', 'Dialog', 'ShipmentTaskCard', 'PrinterPicker'];
+const componentNames = ['Button', 'NumberInput', 'Dialog', 'ShipmentTaskCard', 'ConnectivityBanner', 'PrinterPicker'];
 
 const componentRadiusAliases = [
   ['Button', '{semantic.radius.control}'],
   ['NumberInput', '{semantic.radius.control}'],
   ['Dialog', '{semantic.radius.surface}'],
   ['ShipmentTaskCard', '{semantic.radius.surface}'],
+  ['ConnectivityBanner', '{semantic.radius.control}'],
   ['PrinterPicker', '{semantic.radius.control}']
 ] as const;
 
@@ -78,7 +83,7 @@ describe('Puntiro token contracts', () => {
     for (const [path, type, value] of approvedReferenceTokens) {
       const source = path.startsWith('reference.color')
         ? sources.brand
-        : path.startsWith('reference.font')
+        : path.startsWith('reference.font') || path.startsWith('reference.typography')
           ? sources.type
           : sources.scale;
 
@@ -133,11 +138,16 @@ describe('Puntiro token contracts', () => {
     expect(css).toContain('--puntiro-semantic-color-progress-track: var(--puntiro-reference-color-label-paper);');
     expect(css).toContain('--puntiro-semantic-color-progress-fill: var(--puntiro-reference-color-register-ink);');
     expect(css).toContain('--puntiro-semantic-space-compact: var(--puntiro-reference-space-2);');
+    expect(css).toContain('--puntiro-semantic-typography-kiosk-body: var(--puntiro-reference-typography-kiosk-body);');
+    expect(css).toContain('--puntiro-component-shipment-task-card-text-size: var(--puntiro-semantic-typography-kiosk-body);');
+    expect(css).toContain('--puntiro-component-connectivity-banner-text-size: var(--puntiro-semantic-typography-kiosk-body);');
     expect(json).toHaveProperty('semantic.color.action.primary', '#FF5A1F');
     expect(json).toHaveProperty('semantic.color.progress.track', '#F2F0E8');
     expect(json).toHaveProperty('semantic.color.progress.fill', '#171914');
     expect(json).toHaveProperty('semantic.space.comfortable', { value: 24, unit: 'px' });
     expect(json).toHaveProperty('semantic.radius.control', { value: 12, unit: 'px' });
+    expect(json).toHaveProperty('semantic.typography.kiosk.body', { value: 18, unit: 'px' });
+    expect(json).toHaveProperty('component.ShipmentTaskCard.numberSize', { value: 24, unit: 'px' });
     expect(json).toHaveProperty('component.Button.radius', { value: 12, unit: 'px' });
   });
 });

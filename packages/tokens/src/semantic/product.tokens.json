@@ -34,6 +34,12 @@
     "font": {
       "body": { "$type": "fontFamily", "$value": "{reference.font.sans}", "$description": "Interface font family." },
       "label": { "$type": "fontFamily", "$value": "{reference.font.mono}", "$description": "Label font family." }
+    },
+    "typography": {
+      "kiosk": {
+        "body": { "$type": "dimension", "$value": "{reference.typography.kiosk.body}", "$description": "Minimum kiosk working-text size." },
+        "number": { "$type": "dimension", "$value": "{reference.typography.kiosk.number}", "$description": "Dominant kiosk task-number size." }
+      }
     }
   }
 }

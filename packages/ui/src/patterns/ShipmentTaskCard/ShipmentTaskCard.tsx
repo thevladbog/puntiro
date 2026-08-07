@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
 import type { FeedbackTone } from '../../components/StatusBadge/StatusBadge.types';
 import { usePuntiro } from '../../provider/usePuntiro';
@@ -62,12 +63,14 @@ export function ShipmentTaskCard({
 }: ShipmentTaskCardProps) {
   const { locale } = usePuntiro();
   const copy = shipmentTaskCopy[locale];
+  const statusId = useId();
   const className = [styles.root, isSelected ? styles.selected : ''].filter(Boolean).join(' ');
 
   return <button
     type="button"
     className={className}
     aria-pressed={isSelected}
+    aria-describedby={statusId}
     data-kiosk-working-region="true"
     onClick={onOpen}
   >
@@ -80,6 +83,6 @@ export function ShipmentTaskCard({
       <span><span className={styles.timestampLabel}>{copy.received}</span>{formatTimestamp(receivedAt, locale)}</span>
       {plannedShipAt ? <span><span className={styles.timestampLabel}>{copy.planned}</span>{formatTimestamp(plannedShipAt, locale)}</span> : null}
     </span>
-    <StatusBadge tone={statusTone[status]} label={copy.statuses[status]} />
+    <span id={statusId}><StatusBadge tone={statusTone[status]} label={copy.statuses[status]} announce={false} /></span>
   </button>;
 }

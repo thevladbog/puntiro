@@ -24,6 +24,8 @@ describe('ShipmentTaskCard', () => {
     expect(html).toContain('SALE-DOCUMENT-2026-08-07-000000987654321');
     expect(html).toContain('Данные обновлены после печати');
     expect(html).toContain('Выбрано');
+    expect(html).toContain('aria-describedby=');
+    expect(html).not.toContain('role="status"');
   });
 
   it('uses the provider locale for the visible shipment labels and status', () => {
@@ -41,5 +43,7 @@ describe('ShipmentTaskCard', () => {
     expect(html).toContain('Shipment');
     expect(html).toContain('Needs attention');
     expect(html).toContain('Received');
+    expect(html).toContain('aria-describedby=');
+    expect(html).not.toContain('role="status"');
   });
 });

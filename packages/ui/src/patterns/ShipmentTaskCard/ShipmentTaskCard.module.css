@@ -7,6 +7,8 @@
   padding: var(--puntiro-semantic-space-comfortable);
   overflow-wrap: anywhere;
   text-align: start;
+  font-family: var(--puntiro-semantic-font-body), sans-serif;
+  font-size: var(--puntiro-component-shipment-task-card-text-size);
   color: var(--puntiro-semantic-color-text-primary);
   background: var(--puntiro-component-shipment-task-card-surface);
   border: 2px solid var(--puntiro-component-shipment-task-card-border);
@@ -63,6 +65,7 @@
 
 .number {
   font-family: var(--puntiro-semantic-font-label), monospace;
+  font-size: var(--puntiro-component-shipment-task-card-number-size);
   font-weight: 700;
   overflow-wrap: anywhere;
   word-break: break-word;

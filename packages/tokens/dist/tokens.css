@@ -25,6 +25,8 @@
   --puntiro-reference-motion-confirm: 180ms; /** Confirmation motion duration. */
   --puntiro-reference-font-sans: Onest; /** Puntiro interface font. */
   --puntiro-reference-font-mono: 'IBM Plex Mono'; /** Puntiro code and label font. */
+  --puntiro-reference-typography-kiosk-body: 18px; /** Minimum kiosk working-text size. */
+  --puntiro-reference-typography-kiosk-number: 24px; /** Dominant kiosk task-number size. */
   --puntiro-semantic-color-action-primary: var(--puntiro-reference-color-handoff-orange); /** Primary action. */
   --puntiro-semantic-color-action-primary-soft: var(--puntiro-reference-color-handoff-orange-soft); /** Soft primary action. */
   --puntiro-semantic-color-selected-background: var(--puntiro-reference-color-handoff-orange-soft); /** Selected background. */
@@ -57,6 +59,8 @@
   --puntiro-semantic-motion-confirm: var(--puntiro-reference-motion-confirm); /** Confirmation interaction motion. */
   --puntiro-semantic-font-body: var(--puntiro-reference-font-sans); /** Interface font family. */
   --puntiro-semantic-font-label: var(--puntiro-reference-font-mono); /** Label font family. */
+  --puntiro-semantic-typography-kiosk-body: var(--puntiro-reference-typography-kiosk-body); /** Minimum kiosk working-text size. */
+  --puntiro-semantic-typography-kiosk-number: var(--puntiro-reference-typography-kiosk-number); /** Dominant kiosk task-number size. */
   --puntiro-component-button-background: var(--puntiro-semantic-color-action-primary); /** Primary button background. */
   --puntiro-component-button-foreground: var(--puntiro-semantic-color-text-primary); /** Primary button foreground. */
   --puntiro-component-button-disabled-background: var(--puntiro-semantic-color-disabled-background); /** Disabled button background. */
@@ -75,6 +79,12 @@
   --puntiro-component-shipment-task-card-selected: var(--puntiro-semantic-color-selected-background); /** Selected shipment task card surface. */
   --puntiro-component-shipment-task-card-border: var(--puntiro-semantic-color-border-default); /** Shipment task card border. */
   --puntiro-component-shipment-task-card-radius: var(--puntiro-semantic-radius-surface); /** Shipment task card corner radius. */
+  --puntiro-component-shipment-task-card-text-size: var(--puntiro-semantic-typography-kiosk-body); /** Shipment task card working-text size. */
+  --puntiro-component-shipment-task-card-number-size: var(--puntiro-semantic-typography-kiosk-number); /** Shipment task card dominant number size. */
+  --puntiro-component-connectivity-banner-surface: var(--puntiro-semantic-color-surface-muted); /** Connectivity banner surface. */
+  --puntiro-component-connectivity-banner-border: var(--puntiro-semantic-color-border-default); /** Connectivity banner border. */
+  --puntiro-component-connectivity-banner-radius: var(--puntiro-semantic-radius-control); /** Connectivity banner corner radius. */
+  --puntiro-component-connectivity-banner-text-size: var(--puntiro-semantic-typography-kiosk-body); /** Connectivity banner working-text size. */
   --puntiro-component-printer-picker-surface: var(--puntiro-semantic-color-surface-default); /** Printer picker surface. */
   --puntiro-component-printer-picker-selected: var(--puntiro-semantic-color-selected-background); /** Selected printer picker option. */
   --puntiro-component-printer-picker-border: var(--puntiro-semantic-color-border-default); /** Printer picker border. */

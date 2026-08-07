@@ -22,6 +22,7 @@ export const Online: Story = {
     await expect(banner).toHaveAttribute('data-kiosk-working-region', 'true');
     await expect(banner).toHaveTextContent('Подключение активно');
     await expect(banner).toHaveTextContent('Последняя синхронизация');
+    await expect(Number.parseFloat(getComputedStyle(banner).fontSize)).toBeGreaterThanOrEqual(18);
   }
 };
 

@@ -3,6 +3,8 @@
   gap: var(--puntiro-semantic-space-compact);
   align-items: flex-start;
   padding: var(--puntiro-semantic-space-compact);
+  font-family: var(--puntiro-semantic-font-body), sans-serif;
+  font-size: var(--puntiro-component-connectivity-banner-text-size);
   color: var(--puntiro-semantic-color-text-primary);
   background: var(--puntiro-semantic-color-surface-muted);
   border: 2px solid var(--puntiro-semantic-color-border-default);

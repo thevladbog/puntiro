@@ -11,8 +11,10 @@ const toneIcon: Record<FeedbackTone, IconName> = {
   danger: 'error'
 };
 
-export function StatusBadge({ label, tone = 'neutral' }: StatusBadgeProps) {
-  return <span className={[styles.root, styles[tone]].filter(Boolean).join(' ')} role="status">
+export function StatusBadge({ label, tone = 'neutral', announce = true }: StatusBadgeProps) {
+  const announcementProps = announce ? { role: 'status' as const } : {};
+
+  return <span className={[styles.root, styles[tone]].filter(Boolean).join(' ')} {...announcementProps}>
     <PuntiroIcon name={toneIcon[tone]} />
     <span>{label}</span>
   </span>;

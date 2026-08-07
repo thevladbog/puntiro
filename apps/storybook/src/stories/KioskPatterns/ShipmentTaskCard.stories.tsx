@@ -31,6 +31,10 @@ export const Ready: Story = {
     await expect(card).toHaveAttribute('data-kiosk-working-region', 'true');
     await expect(card).toHaveTextContent('SO-2026-000184');
     await expect(card).toHaveTextContent('Готово к печати');
+    await expect(card).toHaveAccessibleDescription('Готово к печати');
+    await expect(card.querySelector('[role="status"]')).toBeNull();
+    await expect(Number.parseFloat(getComputedStyle(card).fontSize)).toBeGreaterThanOrEqual(18);
+    await expect(Number.parseFloat(getComputedStyle(canvas.getByText('SO-2026-000184')).fontSize)).toBeGreaterThan(Number.parseFloat(getComputedStyle(card).fontSize));
     await userEvent.click(card);
     await expect(args.onOpen).toHaveBeenCalledOnce();
   }
@@ -60,6 +64,8 @@ export const EN: Story = {
   play: async ({ canvasElement }) => {
     const card = within(canvasElement).getByRole('button', { name: /Shipment SO-2026-000184/ });
     await expect(card).toHaveTextContent('Ready to print');
+    await expect(card).toHaveAccessibleDescription('Ready to print');
+    await expect(card.querySelector('[role="status"]')).toBeNull();
   }
 };
 export const Touch: Story = {
@@ -79,4 +85,32 @@ export const Standard: Story = {
 export const ReducedMotion: Story = {
   parameters: reducedMotionParameters,
   play: ({ canvasElement }) => expectReducedMotionEnvironment(canvasElement)
+};
+export const Hover: Story = {
+  play: async ({ canvasElement }) => {
+    const card = within(canvasElement).getByRole('button', { name: /SO-2026-000184/ });
+
+    await userEvent.hover(card);
+    await expect(getComputedStyle(card).transitionProperty).toContain('background');
+    await userEvent.unhover(card);
+  }
+};
+export const FocusVisible: Story = {
+  play: async ({ canvasElement }) => {
+    const card = within(canvasElement).getByRole('button', { name: /SO-2026-000184/ });
+
+    await userEvent.tab();
+    await expect(card).toHaveFocus();
+    await expect(getComputedStyle(card).outlineStyle).toBe('solid');
+  }
+};
+export const Pressed: Story = {
+  play: async ({ canvasElement, args }) => {
+    const card = within(canvasElement).getByRole('button', { name: /SO-2026-000184/ });
+
+    await userEvent.tab();
+    await userEvent.keyboard('{Enter}');
+    await expect(args.onOpen).toHaveBeenCalledOnce();
+    await expect(getComputedStyle(card).transitionProperty).toContain('border-color');
+  }
 };

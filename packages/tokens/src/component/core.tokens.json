@@ -24,7 +24,15 @@
       "surface": { "$type": "color", "$value": "{semantic.color.surface.default}", "$description": "Shipment task card surface." },
       "selected": { "$type": "color", "$value": "{semantic.color.selected.background}", "$description": "Selected shipment task card surface." },
       "border": { "$type": "color", "$value": "{semantic.color.border.default}", "$description": "Shipment task card border." },
-      "radius": { "$type": "dimension", "$value": "{semantic.radius.surface}", "$description": "Shipment task card corner radius." }
+      "radius": { "$type": "dimension", "$value": "{semantic.radius.surface}", "$description": "Shipment task card corner radius." },
+      "textSize": { "$type": "dimension", "$value": "{semantic.typography.kiosk.body}", "$description": "Shipment task card working-text size." },
+      "numberSize": { "$type": "dimension", "$value": "{semantic.typography.kiosk.number}", "$description": "Shipment task card dominant number size." }
+    },
+    "ConnectivityBanner": {
+      "surface": { "$type": "color", "$value": "{semantic.color.surface.muted}", "$description": "Connectivity banner surface." },
+      "border": { "$type": "color", "$value": "{semantic.color.border.default}", "$description": "Connectivity banner border." },
+      "radius": { "$type": "dimension", "$value": "{semantic.radius.control}", "$description": "Connectivity banner corner radius." },
+      "textSize": { "$type": "dimension", "$value": "{semantic.typography.kiosk.body}", "$description": "Connectivity banner working-text size." }
     },
     "PrinterPicker": {
       "surface": { "$type": "color", "$value": "{semantic.color.surface.default}", "$description": "Printer picker surface." },

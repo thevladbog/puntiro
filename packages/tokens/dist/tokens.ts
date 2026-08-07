@@ -24,7 +24,15 @@ export const tokens = {
       "surface": "#fffdf6",
       "selected": "#ffc7b3",
       "border": "#c8c8be",
-      "radius": "24px"
+      "radius": "24px",
+      "textSize": "18px",
+      "numberSize": "24px"
+    },
+    "ConnectivityBanner": {
+      "surface": "#f2f0e8",
+      "border": "#c8c8be",
+      "radius": "12px",
+      "textSize": "18px"
     },
     "PrinterPicker": {
       "surface": "#fffdf6",
@@ -74,6 +82,12 @@ export const tokens = {
     "font": {
       "sans": "Onest",
       "mono": "IBM Plex Mono"
+    },
+    "typography": {
+      "kiosk": {
+        "body": "18px",
+        "number": "24px"
+      }
     }
   },
   "semantic": {
@@ -146,6 +160,12 @@ export const tokens = {
     "font": {
       "body": "Onest",
       "label": "IBM Plex Mono"
+    },
+    "typography": {
+      "kiosk": {
+        "body": "18px",
+        "number": "24px"
+      }
     }
   }
 } as const;
