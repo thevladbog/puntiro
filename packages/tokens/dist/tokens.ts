@@ -125,6 +125,11 @@ export const tokens = {
         "standard": "44px"
       }
     },
+    "radius": {
+      "label": "4px",
+      "control": "12px",
+      "surface": "24px"
+    },
     "motion": {
       "fast": "120ms",
       "confirm": "180ms"

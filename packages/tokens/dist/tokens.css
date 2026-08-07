@@ -25,11 +25,6 @@
   --puntiro-reference-motion-confirm: 180ms; /** Confirmation motion duration. */
   --puntiro-reference-font-sans: Onest; /** Puntiro interface font. */
   --puntiro-reference-font-mono: 'IBM Plex Mono'; /** Puntiro code and label font. */
-  --puntiro-component-button-radius: var(--puntiro-reference-radius-control); /** Button corner radius. */
-  --puntiro-component-number-input-radius: var(--puntiro-reference-radius-control); /** Number input corner radius. */
-  --puntiro-component-dialog-radius: var(--puntiro-reference-radius-surface); /** Dialog corner radius. */
-  --puntiro-component-shipment-task-card-radius: var(--puntiro-reference-radius-surface); /** Shipment task card corner radius. */
-  --puntiro-component-printer-picker-radius: var(--puntiro-reference-radius-control); /** Printer picker corner radius. */
   --puntiro-semantic-color-action-primary: var(--puntiro-reference-color-handoff-orange); /** Primary action. */
   --puntiro-semantic-color-action-primary-soft: var(--puntiro-reference-color-handoff-orange-soft); /** Soft primary action. */
   --puntiro-semantic-color-selected-background: var(--puntiro-reference-color-handoff-orange-soft); /** Selected background. */
@@ -50,6 +45,9 @@
   --puntiro-semantic-color-disabled-border: var(--puntiro-reference-color-registration-line); /** Disabled border. */
   --puntiro-semantic-size-control-touch: var(--puntiro-reference-size-touch-minimum); /** Touch control block size. */
   --puntiro-semantic-size-control-standard: var(--puntiro-reference-size-touch-standard); /** Standard control block size. */
+  --puntiro-semantic-radius-label: var(--puntiro-reference-radius-label); /** Label corner radius. */
+  --puntiro-semantic-radius-control: var(--puntiro-reference-radius-control); /** Control corner radius. */
+  --puntiro-semantic-radius-surface: var(--puntiro-reference-radius-surface); /** Surface corner radius. */
   --puntiro-semantic-motion-fast: var(--puntiro-reference-motion-fast); /** Fast interaction motion. */
   --puntiro-semantic-motion-confirm: var(--puntiro-reference-motion-confirm); /** Confirmation interaction motion. */
   --puntiro-semantic-font-body: var(--puntiro-reference-font-sans); /** Interface font family. */
@@ -59,17 +57,22 @@
   --puntiro-component-button-disabled-background: var(--puntiro-semantic-color-disabled-background); /** Disabled button background. */
   --puntiro-component-button-disabled-foreground: var(--puntiro-semantic-color-disabled-foreground); /** Disabled button foreground. */
   --puntiro-component-button-min-block-size: var(--puntiro-semantic-size-control-touch); /** Touch button block size. */
+  --puntiro-component-button-radius: var(--puntiro-semantic-radius-control); /** Button corner radius. */
   --puntiro-component-number-input-surface: var(--puntiro-semantic-color-surface-default); /** Number input surface. */
   --puntiro-component-number-input-border: var(--puntiro-semantic-color-border-default); /** Number input border. */
   --puntiro-component-number-input-focus: var(--puntiro-semantic-color-focus-ring); /** Number input focus ring. */
   --puntiro-component-number-input-min-block-size: var(--puntiro-semantic-size-control-touch); /** Touch number input block size. */
+  --puntiro-component-number-input-radius: var(--puntiro-semantic-radius-control); /** Number input corner radius. */
   --puntiro-component-dialog-surface: var(--puntiro-semantic-color-surface-default); /** Dialog surface. */
   --puntiro-component-dialog-border: var(--puntiro-semantic-color-border-default); /** Dialog border. */
+  --puntiro-component-dialog-radius: var(--puntiro-semantic-radius-surface); /** Dialog corner radius. */
   --puntiro-component-shipment-task-card-surface: var(--puntiro-semantic-color-surface-default); /** Shipment task card surface. */
   --puntiro-component-shipment-task-card-selected: var(--puntiro-semantic-color-selected-background); /** Selected shipment task card surface. */
   --puntiro-component-shipment-task-card-border: var(--puntiro-semantic-color-border-default); /** Shipment task card border. */
+  --puntiro-component-shipment-task-card-radius: var(--puntiro-semantic-radius-surface); /** Shipment task card corner radius. */
   --puntiro-component-printer-picker-surface: var(--puntiro-semantic-color-surface-default); /** Printer picker surface. */
   --puntiro-component-printer-picker-selected: var(--puntiro-semantic-color-selected-background); /** Selected printer picker option. */
   --puntiro-component-printer-picker-border: var(--puntiro-semantic-color-border-default); /** Printer picker border. */
   --puntiro-component-printer-picker-focus: var(--puntiro-semantic-color-focus-ring); /** Printer picker focus ring. */
+  --puntiro-component-printer-picker-radius: var(--puntiro-semantic-radius-control); /** Printer picker corner radius. */
 }

@@ -18,6 +18,8 @@ const snapshotDirectory = async (directory) => {
       }
     } else if (entry.isFile()) {
       snapshot.set(relative(directory, entryPath), await readFile(entryPath));
+    } else {
+      throw new Error(`Unsupported generated entry: ${relative(directory, entryPath)}`);
     }
   }
 

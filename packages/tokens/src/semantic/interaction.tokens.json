@@ -19,6 +19,11 @@
         "standard": { "$type": "dimension", "$value": "{reference.size.touch.standard}", "$description": "Standard control block size." }
       }
     },
+    "radius": {
+      "label": { "$type": "dimension", "$value": "{reference.radius.label}", "$description": "Label corner radius." },
+      "control": { "$type": "dimension", "$value": "{reference.radius.control}", "$description": "Control corner radius." },
+      "surface": { "$type": "dimension", "$value": "{reference.radius.surface}", "$description": "Surface corner radius." }
+    },
     "motion": {
       "fast": { "$type": "duration", "$value": "{reference.motion.fast}", "$description": "Fast interaction motion." },
       "confirm": { "$type": "duration", "$value": "{reference.motion.confirm}", "$description": "Confirmation interaction motion." }
