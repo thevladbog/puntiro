@@ -134,7 +134,7 @@ apps/storybook/
 - Create: `tsconfig.base.json`
 - Create: `eslint.config.js`
 - Create: `vitest.config.ts`
-- Create: `.gitignore`
+- Modify: `.gitignore`
 - Create: `README.md`
 - Create: `packages/ui/package.json`
 - Create: `packages/ui/tsconfig.json`
@@ -675,7 +675,7 @@ Wrap React Aria Button internally. Loading keeps the accessible name, blocks rep
 
 Add Default, Primary, Secondary, Danger, Ghost, FocusVisible, Pressed, Disabled, Loading, LongRussianText, English, Touch, and Standard stories. Mark the components `beta` until manual touch review.
 
-Replace the temporary semantic preview on `apps/storybook/src/docs/Start.mdx` with a live Button and StatusBadge preview assembled from public `@puntiro/ui` exports.
+Replace the temporary semantic preview on `apps/storybook/src/docs/Start.mdx` with a live Button preview assembled from public `@puntiro/ui` exports. StatusBadge joins this preview in Task 7 after its implementation exists.
 
 - [ ] **Step 6: Run green checks and commit**
 
@@ -759,6 +759,8 @@ export interface SurfaceProps {
 - [ ] **Step 4: Add RU/EN docs and visual states**
 
 Cover monochrome, long content, reduced motion, each tone, zero progress, partial progress, and complete progress. Do not use color alone.
+
+Add StatusBadge to the live Start-page preview beside the Button introduced in Task 6.
 
 - [ ] **Step 5: Run green and commit**
 
