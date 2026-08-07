@@ -19,4 +19,19 @@
 .puntiro-token-gallery table { border-collapse: collapse; min-width: 480px; width: 100%; }
 .puntiro-token-gallery th, .puntiro-token-gallery td { border-bottom: 1px solid var(--puntiro-semantic-color-border-default); padding: 12px 8px; text-align: left; }
 .puntiro-token-gallery th { font-family: var(--puntiro-semantic-font-label); font-weight: 600; }
-@media (max-width: 700px) { .puntiro-start__map > div { grid-template-columns: 1fr; } .puntiro-article__header { text-align: left; } }
+.puntiro-key-color-gallery { margin-bottom: 32px; }
+.puntiro-key-color-gallery > h2 { margin-bottom: 16px; }
+.puntiro-key-color-gallery__grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.puntiro-color-role { background: var(--puntiro-semantic-color-surface-default); border: 1px solid var(--puntiro-semantic-color-border-default); border-radius: var(--puntiro-semantic-radius-surface); min-width: 0; overflow: hidden; }
+.puntiro-token-swatch { border-bottom: 1px solid var(--puntiro-semantic-color-border-default); box-shadow: inset 0 0 0 1px var(--puntiro-semantic-color-focus-offset); display: block; min-height: 112px; }
+.puntiro-color-role__copy { display: grid; gap: 6px; padding: 16px; }
+.puntiro-color-role__copy code, .puntiro-color-role--status code { overflow-wrap: anywhere; }
+.puntiro-color-role__status-swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.puntiro-color-role__status-swatches > div { display: grid; gap: 6px; min-width: 0; padding-bottom: 16px; }
+.puntiro-color-role__status-swatches > div + div { border-left: 1px solid var(--puntiro-semantic-color-border-default); }
+.puntiro-color-role__status-swatches .puntiro-token-swatch { margin-bottom: 10px; min-height: 112px; }
+.puntiro-color-role__status-swatches span, .puntiro-color-role__status-swatches code { padding-inline: 10px; }
+.puntiro-token-swatch--table { border: 1px solid var(--puntiro-semantic-color-border-default); border-radius: var(--puntiro-semantic-radius-control); min-height: 32px; width: 48px; }
+.puntiro-token-gallery td:first-child { width: 64px; }
+@media (max-width: 960px) { .puntiro-key-color-gallery__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .puntiro-start__map > div, .puntiro-key-color-gallery__grid { grid-template-columns: 1fr; } .puntiro-article__header { text-align: left; } }
