@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig, defineProject } from 'vitest/config';
 
 export default defineConfig({
@@ -5,6 +6,11 @@ export default defineConfig({
     passWithNoTests: true,
     projects: [
       defineProject({
+        resolve: {
+          alias: {
+            '@puntiro/ui': fileURLToPath(new URL('./packages/ui/src/index.ts', import.meta.url))
+          }
+        },
         test: {
           name: 'unit',
           environment: 'node',

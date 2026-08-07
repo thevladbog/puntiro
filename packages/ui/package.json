@@ -14,7 +14,7 @@
     "./styles.css": "./dist/index.css"
   },
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/check-ui-declarations.mjs",
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {

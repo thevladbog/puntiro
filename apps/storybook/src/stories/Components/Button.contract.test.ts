@@ -1,5 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 
 const css = readFileSync(new URL('../../../../../packages/ui/src/components/Button/Button.module.css', import.meta.url), 'utf8');
@@ -13,23 +12,6 @@ function luminance(hex: string): number {
   const linear = channels.map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
   return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
 }
-
-function declarationFiles(directory: string): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) return declarationFiles(path);
-    return entry.name.endsWith('.d.ts') ? [path] : [];
-  });
-}
-
-it('keeps Lucide out of every emitted UI declaration', () => {
-  const declarations = declarationFiles(new URL('../../../../../packages/ui/dist', import.meta.url).pathname);
-
-  expect(declarations).not.toHaveLength(0);
-  for (const declaration of declarations) {
-    expect(readFileSync(declaration, 'utf8')).not.toContain('lucide-react');
-  }
-});
 
 it('uses a two-layer semantic focus treatment with a 3:1 inner boundary', () => {
   expect(css).toContain('.root:focus-visible');
