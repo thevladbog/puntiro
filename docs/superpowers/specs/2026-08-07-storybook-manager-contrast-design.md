@@ -83,6 +83,10 @@ A standalone Docs browser contract must open the Start article, prove that its
 Puntiro context is present, and switch RU/Touch to EN/Standard through the
 manager toolbar without reloading the document.
 
+The dev preview must recover from a transient stale story-module import by
+retrying the selected story once. Repeated failures within ten seconds must
+remain visible rather than enter a reload loop.
+
 ## Verification
 
 Run the focused RED/GREEN regression, manager browser check, Storybook static

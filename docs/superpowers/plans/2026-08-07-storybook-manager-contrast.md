@@ -18,6 +18,8 @@
 - Component preview and Docs remain light; existing component screenshot baselines must not change.
 - Standalone MDX Docs receive `PuntiroProvider` through the supported Docs
   container and update from the RU/EN and Touch/Standard toolbar globals.
+- A transient dev-server story import failure retries once through the preview
+  channel; a ten-second guard prevents reload loops for persistent errors.
 - Use only Storybook's supported theming API; do not add CSS selectors targeting manager internals.
 - Do not change Puntiro tokens, components, public APIs, stories, product screens, or hardware behavior.
 

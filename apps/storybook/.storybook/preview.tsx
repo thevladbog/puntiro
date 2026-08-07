@@ -1,8 +1,21 @@
 import type { Preview } from '@storybook/react-vite';
 import { PuntiroProvider } from '@puntiro/ui';
 import type { InteractionMode, Locale } from '@puntiro/ui';
+import { addons } from 'storybook/preview-api';
 import { PuntiroDocsContainer } from './PuntiroDocsContainer';
 import { docsTheme } from './theme';
+
+const storyLoadRecoveryKey = 'puntiro:last-story-load-recovery';
+
+addons.getChannel().on('storyMissing', (storyId) => {
+  if (typeof storyId !== 'string') return;
+
+  const lastRecovery = Number(window.sessionStorage.getItem(storyLoadRecoveryKey) ?? 0);
+  if (Date.now() - lastRecovery < 10_000) return;
+
+  window.sessionStorage.setItem(storyLoadRecoveryKey, String(Date.now()));
+  window.location.reload();
+});
 
 type PuntiroStoryParameters = {
   puntiro?: {
