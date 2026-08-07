@@ -17,11 +17,21 @@ async function declarationFiles(directory) {
   return files;
 }
 
-const files = await declarationFiles(declarationDirectory);
-
-if (files.length === 0) {
+function reportMissingDeclarations() {
   console.error(`No UI declarations found in ${relative(repositoryRoot, declarationDirectory)}.`);
   process.exit(1);
+}
+
+let files;
+try {
+  files = await declarationFiles(declarationDirectory);
+} catch (error) {
+  if (error?.code === 'ENOENT') reportMissingDeclarations();
+  throw error;
+}
+
+if (files.length === 0) {
+  reportMissingDeclarations();
 }
 
 const leakingFiles = [];
