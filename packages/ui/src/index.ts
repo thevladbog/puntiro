@@ -20,6 +20,9 @@ export { Button } from './components/Button/Button';
 export { IconButton } from './components/IconButton/IconButton';
 export type { ButtonProps, ButtonVariant, IconButtonProps } from './components/Button/Button.types';
 
+export { NumberInput } from './components/NumberInput/NumberInput';
+export type { NumberInputProps } from './components/NumberInput/NumberInput.types';
+
 export { Surface } from './components/Surface/Surface';
 export type { SurfaceProps } from './components/Surface/Surface.types';
 export { StatusBadge } from './components/StatusBadge/StatusBadge';

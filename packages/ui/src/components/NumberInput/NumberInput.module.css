@@ -1,0 +1,104 @@
+.root {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--puntiro-semantic-color-text-primary);
+}
+
+.label {
+  font: 700 0.875rem/1.25 var(--puntiro-semantic-font-label), sans-serif;
+}
+
+.group {
+  display: grid;
+  grid-template-columns: var(--puntiro-control-min-block-size) minmax(4rem, 1fr) var(--puntiro-control-min-block-size);
+  min-block-size: var(--puntiro-control-min-block-size);
+  max-inline-size: 24rem;
+  overflow: hidden;
+  border: 1px solid var(--puntiro-component-number-input-border);
+  border-radius: var(--puntiro-component-number-input-radius);
+  background: var(--puntiro-component-number-input-surface);
+}
+
+.stepper {
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--puntiro-control-min-block-size);
+  min-block-size: var(--puntiro-control-min-block-size);
+  border: 0;
+  background: var(--puntiro-component-number-input-surface);
+  color: var(--puntiro-semantic-color-text-primary);
+  cursor: pointer;
+  transition: background-color var(--puntiro-semantic-motion-fast) ease, color var(--puntiro-semantic-motion-fast) ease;
+}
+
+.stepper[data-hovered]:not([data-disabled]) {
+  background: var(--puntiro-semantic-color-surface-muted);
+}
+
+.stepper[data-pressed]:not([data-disabled]) {
+  background: var(--puntiro-semantic-color-action-primary);
+}
+
+.stepper:focus-visible,
+.input:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--puntiro-semantic-color-text-primary);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px var(--puntiro-component-number-input-focus), inset 0 0 0 6px var(--puntiro-semantic-color-focus-offset);
+}
+
+.input {
+  min-inline-size: 0;
+  min-block-size: var(--puntiro-control-min-block-size);
+  border: 0;
+  border-inline: 1px solid var(--puntiro-component-number-input-border);
+  border-radius: 0;
+  appearance: textfield;
+  background: var(--puntiro-component-number-input-surface);
+  color: var(--puntiro-semantic-color-text-primary);
+  font: 700 1.25rem/1 var(--puntiro-semantic-font-label), sans-serif;
+  text-align: center;
+}
+
+.input::-webkit-inner-spin-button,
+.input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.description,
+.error {
+  margin: 0;
+  font: 400 0.875rem/1.4 var(--puntiro-semantic-font-body), sans-serif;
+}
+
+.description {
+  color: var(--puntiro-semantic-color-text-secondary);
+}
+
+.error {
+  color: var(--puntiro-semantic-color-text-primary);
+}
+
+.root[data-disabled] {
+  color: var(--puntiro-semantic-color-disabled-foreground);
+}
+
+.root[data-disabled] .group,
+.root[data-disabled] .stepper,
+.root[data-disabled] .input {
+  background: var(--puntiro-semantic-color-disabled-background);
+  color: var(--puntiro-semantic-color-disabled-foreground);
+  cursor: not-allowed;
+}
+
+.root[data-invalid] .group {
+  border-color: var(--puntiro-semantic-color-danger-default);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepper {
+    transition: none;
+  }
+}
