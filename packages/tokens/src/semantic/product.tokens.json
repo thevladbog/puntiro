@@ -1,0 +1,39 @@
+{
+  "semantic": {
+    "color": {
+      "canvas": {
+        "default": { "$type": "color", "$value": "{reference.color.labelPaper}", "$description": "Default application canvas." }
+      },
+      "surface": {
+        "default": { "$type": "color", "$value": "{reference.color.labelPaperStrong}", "$description": "Default content surface." },
+        "muted": { "$type": "color", "$value": "{reference.color.labelPaper}", "$description": "Muted content surface." }
+      },
+      "text": {
+        "primary": { "$type": "color", "$value": "{reference.color.registerInk}", "$description": "Primary text." },
+        "secondary": { "$type": "color", "$value": "{reference.color.registerInkSoft}", "$description": "Secondary text." },
+        "inverse": { "$type": "color", "$value": "{reference.color.labelPaperStrong}", "$description": "Text on dark or status surfaces." }
+      },
+      "border": {
+        "default": { "$type": "color", "$value": "{reference.color.registrationLine}", "$description": "Default border." }
+      },
+      "success": {
+        "default": { "$type": "color", "$value": "{reference.color.statusOk}", "$description": "Success status." }
+      },
+      "warning": {
+        "default": { "$type": "color", "$value": "{reference.color.statusWarning}", "$description": "Warning status." }
+      },
+      "danger": {
+        "default": { "$type": "color", "$value": "{reference.color.statusDanger}", "$description": "Danger status." }
+      },
+      "disabled": {
+        "background": { "$type": "color", "$value": "{reference.color.warehouseSteel}", "$description": "Disabled background." },
+        "foreground": { "$type": "color", "$value": "{reference.color.labelPaperStrong}", "$description": "Disabled foreground." },
+        "border": { "$type": "color", "$value": "{reference.color.registrationLine}", "$description": "Disabled border." }
+      }
+    },
+    "font": {
+      "body": { "$type": "fontFamily", "$value": "{reference.font.sans}", "$description": "Interface font family." },
+      "label": { "$type": "fontFamily", "$value": "{reference.font.mono}", "$description": "Label font family." }
+    }
+  }
+}

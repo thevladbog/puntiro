@@ -1,0 +1,8 @@
+{
+  "reference": {
+    "font": {
+      "sans": { "$type": "fontFamily", "$value": "Onest", "$description": "Puntiro interface font." },
+      "mono": { "$type": "fontFamily", "$value": "IBM Plex Mono", "$description": "Puntiro code and label font." }
+    }
+  }
+}

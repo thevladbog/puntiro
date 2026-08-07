@@ -19,6 +19,7 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fontsource/onest": "5.3.0",
+    "@puntiro/tokens": "workspace:*",
     "lucide-react": "1.26.0",
     "react-aria-components": "1.19.0"
   },

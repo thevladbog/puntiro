@@ -1,0 +1,17 @@
+{
+  "reference": {
+    "color": {
+      "registerInk": { "$type": "color", "$value": "#171914", "$description": "Puntiro register ink." },
+      "registerInkSoft": { "$type": "color", "$value": "#292C26", "$description": "Softer register ink." },
+      "labelPaper": { "$type": "color", "$value": "#F2F0E8", "$description": "Puntiro label paper." },
+      "labelPaperStrong": { "$type": "color", "$value": "#FFFDF6", "$description": "Strong label paper." },
+      "warehouseSteel": { "$type": "color", "$value": "#8B9189", "$description": "Warehouse steel." },
+      "registrationLine": { "$type": "color", "$value": "#C8C8BE", "$description": "Registration line." },
+      "handoffOrange": { "$type": "color", "$value": "#FF5A1F", "$description": "Handoff orange." },
+      "handoffOrangeSoft": { "$type": "color", "$value": "#FFC7B3", "$description": "Soft handoff orange." },
+      "statusOk": { "$type": "color", "$value": "#267A53", "$description": "Positive status color." },
+      "statusWarning": { "$type": "color", "$value": "#D08A00", "$description": "Warning status color." },
+      "statusDanger": { "$type": "color", "$value": "#C93D33", "$description": "Danger status color." }
+    }
+  }
+}

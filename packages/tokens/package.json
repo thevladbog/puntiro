@@ -1,0 +1,20 @@
+{
+  "name": "@puntiro/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./tokens.css": "./dist/tokens.css",
+    "./tokens.json": "./dist/tokens.json",
+    "./tokens": "./dist/tokens.ts"
+  },
+  "scripts": {
+    "build": "rm -rf dist && style-dictionary build --config sd.config.mjs"
+  },
+  "devDependencies": {
+    "style-dictionary": "5.5.0"
+  }
+}

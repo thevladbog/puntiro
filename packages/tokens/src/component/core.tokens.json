@@ -1,0 +1,37 @@
+{
+  "component": {
+    "Button": {
+      "background": { "$type": "color", "$value": "{semantic.color.action.primary}", "$description": "Primary button background." },
+      "foreground": { "$type": "color", "$value": "{semantic.color.text.primary}", "$description": "Primary button foreground." },
+      "disabledBackground": { "$type": "color", "$value": "{semantic.color.disabled.background}", "$description": "Disabled button background." },
+      "disabledForeground": { "$type": "color", "$value": "{semantic.color.disabled.foreground}", "$description": "Disabled button foreground." },
+      "minBlockSize": { "$type": "dimension", "$value": "{semantic.size.control.touch}", "$description": "Touch button block size." },
+      "radius": { "$type": "dimension", "$value": "{reference.radius.control}", "$description": "Button corner radius." }
+    },
+    "NumberInput": {
+      "surface": { "$type": "color", "$value": "{semantic.color.surface.default}", "$description": "Number input surface." },
+      "border": { "$type": "color", "$value": "{semantic.color.border.default}", "$description": "Number input border." },
+      "focus": { "$type": "color", "$value": "{semantic.color.focus.ring}", "$description": "Number input focus ring." },
+      "minBlockSize": { "$type": "dimension", "$value": "{semantic.size.control.touch}", "$description": "Touch number input block size." },
+      "radius": { "$type": "dimension", "$value": "{reference.radius.control}", "$description": "Number input corner radius." }
+    },
+    "Dialog": {
+      "surface": { "$type": "color", "$value": "{semantic.color.surface.default}", "$description": "Dialog surface." },
+      "border": { "$type": "color", "$value": "{semantic.color.border.default}", "$description": "Dialog border." },
+      "radius": { "$type": "dimension", "$value": "{reference.radius.surface}", "$description": "Dialog corner radius." }
+    },
+    "ShipmentTaskCard": {
+      "surface": { "$type": "color", "$value": "{semantic.color.surface.default}", "$description": "Shipment task card surface." },
+      "selected": { "$type": "color", "$value": "{semantic.color.selected.background}", "$description": "Selected shipment task card surface." },
+      "border": { "$type": "color", "$value": "{semantic.color.border.default}", "$description": "Shipment task card border." },
+      "radius": { "$type": "dimension", "$value": "{reference.radius.surface}", "$description": "Shipment task card corner radius." }
+    },
+    "PrinterPicker": {
+      "surface": { "$type": "color", "$value": "{semantic.color.surface.default}", "$description": "Printer picker surface." },
+      "selected": { "$type": "color", "$value": "{semantic.color.selected.background}", "$description": "Selected printer picker option." },
+      "border": { "$type": "color", "$value": "{semantic.color.border.default}", "$description": "Printer picker border." },
+      "focus": { "$type": "color", "$value": "{semantic.color.focus.ring}", "$description": "Printer picker focus ring." },
+      "radius": { "$type": "dimension", "$value": "{reference.radius.control}", "$description": "Printer picker corner radius." }
+    }
+  }
+}

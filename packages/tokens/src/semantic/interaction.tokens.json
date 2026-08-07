@@ -1,0 +1,27 @@
+{
+  "semantic": {
+    "color": {
+      "action": {
+        "primary": { "$type": "color", "$value": "{reference.color.handoffOrange}", "$description": "Primary action." },
+        "primarySoft": { "$type": "color", "$value": "{reference.color.handoffOrangeSoft}", "$description": "Soft primary action." }
+      },
+      "selected": {
+        "background": { "$type": "color", "$value": "{reference.color.handoffOrangeSoft}", "$description": "Selected background." }
+      },
+      "focus": {
+        "ring": { "$type": "color", "$value": "{reference.color.handoffOrange}", "$description": "Keyboard focus ring." },
+        "offset": { "$type": "color", "$value": "{reference.color.labelPaperStrong}", "$description": "Keyboard focus offset." }
+      }
+    },
+    "size": {
+      "control": {
+        "touch": { "$type": "dimension", "$value": "{reference.size.touch.minimum}", "$description": "Touch control block size." },
+        "standard": { "$type": "dimension", "$value": "{reference.size.touch.standard}", "$description": "Standard control block size." }
+      }
+    },
+    "motion": {
+      "fast": { "$type": "duration", "$value": "{reference.motion.fast}", "$description": "Fast interaction motion." },
+      "confirm": { "$type": "duration", "$value": "{reference.motion.confirm}", "$description": "Confirmation interaction motion." }
+    }
+  }
+}

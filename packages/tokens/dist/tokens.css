@@ -1,0 +1,75 @@
+:root {
+  --puntiro-reference-color-register-ink: #171914; /** Puntiro register ink. */
+  --puntiro-reference-color-register-ink-soft: #292c26; /** Softer register ink. */
+  --puntiro-reference-color-label-paper: #f2f0e8; /** Puntiro label paper. */
+  --puntiro-reference-color-label-paper-strong: #fffdf6; /** Strong label paper. */
+  --puntiro-reference-color-warehouse-steel: #8b9189; /** Warehouse steel. */
+  --puntiro-reference-color-registration-line: #c8c8be; /** Registration line. */
+  --puntiro-reference-color-handoff-orange: #ff5a1f; /** Handoff orange. */
+  --puntiro-reference-color-handoff-orange-soft: #ffc7b3; /** Soft handoff orange. */
+  --puntiro-reference-color-status-ok: #267a53; /** Positive status color. */
+  --puntiro-reference-color-status-warning: #d08a00; /** Warning status color. */
+  --puntiro-reference-color-status-danger: #c93d33; /** Danger status color. */
+  --puntiro-reference-space-2: 16px; /** Two spacing units. */
+  --puntiro-reference-space-3: 24px; /** Three spacing units. */
+  --puntiro-reference-space-4: 32px; /** Four spacing units. */
+  --puntiro-reference-space-6: 48px; /** Six spacing units. */
+  --puntiro-reference-space-unit: 8px; /** Base spacing unit. */
+  --puntiro-reference-size-touch-minimum: 64px; /** Minimum touch target size. */
+  --puntiro-reference-size-touch-comfortable: 72px; /** Comfortable touch target size. */
+  --puntiro-reference-size-touch-standard: 44px; /** Standard control target size. */
+  --puntiro-reference-radius-label: 4px; /** Label corner radius. */
+  --puntiro-reference-radius-control: 12px; /** Control corner radius. */
+  --puntiro-reference-radius-surface: 24px; /** Surface corner radius. */
+  --puntiro-reference-motion-fast: 120ms; /** Fast motion duration. */
+  --puntiro-reference-motion-confirm: 180ms; /** Confirmation motion duration. */
+  --puntiro-reference-font-sans: Onest; /** Puntiro interface font. */
+  --puntiro-reference-font-mono: 'IBM Plex Mono'; /** Puntiro code and label font. */
+  --puntiro-component-button-radius: var(--puntiro-reference-radius-control); /** Button corner radius. */
+  --puntiro-component-number-input-radius: var(--puntiro-reference-radius-control); /** Number input corner radius. */
+  --puntiro-component-dialog-radius: var(--puntiro-reference-radius-surface); /** Dialog corner radius. */
+  --puntiro-component-shipment-task-card-radius: var(--puntiro-reference-radius-surface); /** Shipment task card corner radius. */
+  --puntiro-component-printer-picker-radius: var(--puntiro-reference-radius-control); /** Printer picker corner radius. */
+  --puntiro-semantic-color-action-primary: var(--puntiro-reference-color-handoff-orange); /** Primary action. */
+  --puntiro-semantic-color-action-primary-soft: var(--puntiro-reference-color-handoff-orange-soft); /** Soft primary action. */
+  --puntiro-semantic-color-selected-background: var(--puntiro-reference-color-handoff-orange-soft); /** Selected background. */
+  --puntiro-semantic-color-focus-ring: var(--puntiro-reference-color-handoff-orange); /** Keyboard focus ring. */
+  --puntiro-semantic-color-focus-offset: var(--puntiro-reference-color-label-paper-strong); /** Keyboard focus offset. */
+  --puntiro-semantic-color-canvas-default: var(--puntiro-reference-color-label-paper); /** Default application canvas. */
+  --puntiro-semantic-color-surface-default: var(--puntiro-reference-color-label-paper-strong); /** Default content surface. */
+  --puntiro-semantic-color-surface-muted: var(--puntiro-reference-color-label-paper); /** Muted content surface. */
+  --puntiro-semantic-color-text-primary: var(--puntiro-reference-color-register-ink); /** Primary text. */
+  --puntiro-semantic-color-text-secondary: var(--puntiro-reference-color-register-ink-soft); /** Secondary text. */
+  --puntiro-semantic-color-text-inverse: var(--puntiro-reference-color-label-paper-strong); /** Text on dark or status surfaces. */
+  --puntiro-semantic-color-border-default: var(--puntiro-reference-color-registration-line); /** Default border. */
+  --puntiro-semantic-color-success-default: var(--puntiro-reference-color-status-ok); /** Success status. */
+  --puntiro-semantic-color-warning-default: var(--puntiro-reference-color-status-warning); /** Warning status. */
+  --puntiro-semantic-color-danger-default: var(--puntiro-reference-color-status-danger); /** Danger status. */
+  --puntiro-semantic-color-disabled-background: var(--puntiro-reference-color-warehouse-steel); /** Disabled background. */
+  --puntiro-semantic-color-disabled-foreground: var(--puntiro-reference-color-label-paper-strong); /** Disabled foreground. */
+  --puntiro-semantic-color-disabled-border: var(--puntiro-reference-color-registration-line); /** Disabled border. */
+  --puntiro-semantic-size-control-touch: var(--puntiro-reference-size-touch-minimum); /** Touch control block size. */
+  --puntiro-semantic-size-control-standard: var(--puntiro-reference-size-touch-standard); /** Standard control block size. */
+  --puntiro-semantic-motion-fast: var(--puntiro-reference-motion-fast); /** Fast interaction motion. */
+  --puntiro-semantic-motion-confirm: var(--puntiro-reference-motion-confirm); /** Confirmation interaction motion. */
+  --puntiro-semantic-font-body: var(--puntiro-reference-font-sans); /** Interface font family. */
+  --puntiro-semantic-font-label: var(--puntiro-reference-font-mono); /** Label font family. */
+  --puntiro-component-button-background: var(--puntiro-semantic-color-action-primary); /** Primary button background. */
+  --puntiro-component-button-foreground: var(--puntiro-semantic-color-text-primary); /** Primary button foreground. */
+  --puntiro-component-button-disabled-background: var(--puntiro-semantic-color-disabled-background); /** Disabled button background. */
+  --puntiro-component-button-disabled-foreground: var(--puntiro-semantic-color-disabled-foreground); /** Disabled button foreground. */
+  --puntiro-component-button-min-block-size: var(--puntiro-semantic-size-control-touch); /** Touch button block size. */
+  --puntiro-component-number-input-surface: var(--puntiro-semantic-color-surface-default); /** Number input surface. */
+  --puntiro-component-number-input-border: var(--puntiro-semantic-color-border-default); /** Number input border. */
+  --puntiro-component-number-input-focus: var(--puntiro-semantic-color-focus-ring); /** Number input focus ring. */
+  --puntiro-component-number-input-min-block-size: var(--puntiro-semantic-size-control-touch); /** Touch number input block size. */
+  --puntiro-component-dialog-surface: var(--puntiro-semantic-color-surface-default); /** Dialog surface. */
+  --puntiro-component-dialog-border: var(--puntiro-semantic-color-border-default); /** Dialog border. */
+  --puntiro-component-shipment-task-card-surface: var(--puntiro-semantic-color-surface-default); /** Shipment task card surface. */
+  --puntiro-component-shipment-task-card-selected: var(--puntiro-semantic-color-selected-background); /** Selected shipment task card surface. */
+  --puntiro-component-shipment-task-card-border: var(--puntiro-semantic-color-border-default); /** Shipment task card border. */
+  --puntiro-component-printer-picker-surface: var(--puntiro-semantic-color-surface-default); /** Printer picker surface. */
+  --puntiro-component-printer-picker-selected: var(--puntiro-semantic-color-selected-background); /** Selected printer picker option. */
+  --puntiro-component-printer-picker-border: var(--puntiro-semantic-color-border-default); /** Printer picker border. */
+  --puntiro-component-printer-picker-focus: var(--puntiro-semantic-color-focus-ring); /** Printer picker focus ring. */
+}
