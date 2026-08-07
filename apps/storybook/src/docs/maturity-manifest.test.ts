@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { maturityManifest } from './maturity-manifest';
+import {
+  maturityDocsBindings,
+  maturityManifest,
+  resolveMaturityEntriesForDocs,
+  summarizeMaturity,
+  type MaturityManifestEntry,
+} from './maturity-manifest';
 
 const expectedEntries = [
   ['Button', 'components-button--default'],
@@ -41,5 +47,45 @@ describe('maturityManifest', () => {
         manualScreenReaderReviewed: false,
       });
     }
+  });
+
+  it('binds every first-wave export once and resolves all grouped system-state gates', () => {
+    const boundNames = Object.values(maturityDocsBindings).flat();
+
+    expect([...boundNames].sort()).toEqual(maturityManifest.map((entry) => entry.name).sort());
+    expect(new Set(boundNames).size).toBe(maturityManifest.length);
+    expect(resolveMaturityEntriesForDocs('System states').map((entry) => entry.name)).toEqual([
+      'EmptyState',
+      'LoadingState',
+      'ErrorState',
+    ]);
+  });
+
+  it('derives level and manual-review counts from any manifest snapshot', () => {
+    const entries: MaturityManifestEntry[] = [
+      {
+        name: 'BetaExample',
+        level: 'beta',
+        since: '0.1.0',
+        docsStoryId: 'components-beta-example--default',
+        manualTouchReviewed: false,
+        manualScreenReaderReviewed: true,
+      },
+      {
+        name: 'StableExample',
+        level: 'stable',
+        since: '0.2.0',
+        docsStoryId: 'components-stable-example--default',
+        manualTouchReviewed: true,
+        manualScreenReaderReviewed: true,
+      },
+    ];
+
+    expect(summarizeMaturity(entries)).toEqual({
+      total: 2,
+      levelCounts: { draft: 0, beta: 1, stable: 1, deprecated: 0 },
+      manualTouchReviewed: 1,
+      manualScreenReaderReviewed: 2,
+    });
   });
 });
