@@ -11,6 +11,15 @@ const items = [
   { id: 'epl', label: 'EPL', isDisabled: true, description: 'Не поддерживается текущим заданием.' }
 ] as const;
 
+function tokenColor(canvasElement: HTMLElement, token: string) {
+  const probe = document.createElement('span');
+  probe.style.color = `var(${token})`;
+  canvasElement.append(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
+}
+
 const meta = {
   title: 'Components/Select',
   component: Select,
@@ -23,9 +32,12 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Placeholder: Story = {
+  args: { description: 'Выберите поддерживаемый язык.' },
   play: async ({ canvasElement }) => {
-    const trigger = within(canvasElement).getByRole('button', { name: 'Язык принтера' });
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole('button', { name: 'Язык принтера' });
     await expect(trigger).toHaveTextContent('Выберите язык');
+    await expect(getComputedStyle(trigger.querySelector('[data-placeholder]')!).color).toBe(tokenColor(canvasElement, '--puntiro-semantic-color-text-secondary'));
   }
 };
 
@@ -34,7 +46,9 @@ export const Selection: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Язык принтера' }));
     await userEvent.click(within(document.body).getByRole('option', { name: 'ZPL' }));
-    await expect(canvas.getByRole('button', { name: 'Язык принтера' })).toHaveTextContent('ZPL');
+    const trigger = canvas.getByRole('button', { name: 'Язык принтера' });
+    await expect(trigger).toHaveTextContent('ZPL');
+    await expect(getComputedStyle(trigger.querySelector('span')!).color).toBe(tokenColor(canvasElement, '--puntiro-semantic-color-text-primary'));
   }
 };
 
@@ -65,6 +79,7 @@ export const DisabledOption: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Язык принтера' }));
     const option = within(document.body).getByRole('option', { name: 'EPL' });
     await expect(option).toHaveAttribute('aria-disabled', 'true');
+    await expect(option).toHaveAccessibleDescription('Не поддерживается текущим заданием.');
     await userEvent.click(option);
     await expect(canvas.getByRole('button', { name: 'Язык принтера' })).toHaveTextContent('Выберите язык');
   }
@@ -85,20 +100,26 @@ export const LongOption: Story = {
 };
 export const Touch: Story = {
   globals: { interactionMode: 'touch' },
+  args: { items: [{ id: 'zpl', label: 'ZPL' }] },
   play: async ({ canvasElement }) => {
     const trigger = within(canvasElement).getByRole('button');
-    await expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(64);
+    await expect(trigger.getBoundingClientRect().height).toBe(64);
     await userEvent.click(trigger);
-    await expect(within(document.body).getByRole('option', { name: 'ZPL' }).getBoundingClientRect().height).toBeGreaterThanOrEqual(64);
+    const option = within(document.body).getByRole('option', { name: 'ZPL' });
+    await expect(option.getBoundingClientRect().height).toBe(64);
+    await expect(option.closest('[data-interaction-mode]')).toHaveAttribute('data-interaction-mode', 'touch');
   }
 };
 export const Standard: Story = {
   globals: { interactionMode: 'standard' },
+  args: { items: [{ id: 'zpl', label: 'ZPL' }] },
   play: async ({ canvasElement }) => {
     const trigger = within(canvasElement).getByRole('button');
-    await expect(trigger.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    await expect(trigger.getBoundingClientRect().height).toBe(44);
     await userEvent.click(trigger);
-    await expect(within(document.body).getByRole('option', { name: 'ZPL' }).getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    const option = within(document.body).getByRole('option', { name: 'ZPL' });
+    await expect(option.getBoundingClientRect().height).toBe(44);
+    await expect(option.closest('[data-interaction-mode]')).toHaveAttribute('data-interaction-mode', 'standard');
   }
 };
 export const EN: Story = { globals: { locale: 'en' }, args: { label: 'Label language', placeholder: 'Choose a language', items: [{ id: 'zpl', label: 'ZPL' }, { id: 'tspl', label: 'TSPL' }] } };

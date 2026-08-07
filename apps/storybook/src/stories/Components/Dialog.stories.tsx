@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { Button, Dialog } from '@puntiro/ui';
 import { createDocsPage } from '../../docs/ComponentDocsPage';
 import { expectReducedMotionEnvironment, reducedMotionParameters } from '../reducedMotion';
@@ -29,6 +29,9 @@ export const Confirmation: Story = {
     await userEvent.click(trigger);
     const dialog = within(document.body).getByRole('dialog', { name: 'Отменить печать?' });
     await expect(dialog).toHaveAccessibleDescription('Уже переданные задания могут быть напечатаны.');
+    const action = within(document.body).getByRole('button', { name: 'Продолжить печать' });
+    await expect(action.getBoundingClientRect().height).toBe(64);
+    await expect(action.closest('[data-interaction-mode]')).toHaveAttribute('data-interaction-mode', 'touch');
     await userEvent.keyboard('{Escape}');
     await expect(trigger).toHaveFocus();
   }
@@ -55,10 +58,37 @@ export const Busy: Story = {
     const trigger = within(canvasElement).getByRole('button', { name: 'Отменить печать' });
     await userEvent.click(trigger);
     const dialog = within(document.body).getByRole('dialog', { name: 'Печать выполняется' });
+    const overlay = within(document.body).getByTestId('dialog-overlay');
+    await waitFor(() => expect(dialog).toBeVisible());
+    await waitFor(() => expect(overlay).toBeVisible());
     await userEvent.keyboard('{Escape}');
     await expect(dialog).toBeVisible();
-    await userEvent.click(within(document.body).getByTestId('dialog-overlay'));
+    await expect(overlay).not.toHaveAttribute('data-exiting');
+    await userEvent.click(overlay);
     await expect(dialog).toBeVisible();
+    await expect(overlay).not.toHaveAttribute('data-exiting');
+  }
+};
+
+export const Standard: Story = {
+  globals: { interactionMode: 'standard' },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole('button', { name: 'Отменить печать' });
+    await userEvent.click(trigger);
+    const action = within(document.body).getByRole('button', { name: 'Продолжить печать' });
+    await expect(action.getBoundingClientRect().height).toBe(44);
+    await expect(action.closest('[data-interaction-mode]')).toHaveAttribute('data-interaction-mode', 'standard');
+  }
+};
+
+export const PrimaryTouch: Story = {
+  args: { actions: [{ id: 'confirm', label: 'Подтвердить', variant: 'primary', onPress: (close) => close() }] },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole('button', { name: 'Отменить печать' });
+    await userEvent.click(trigger);
+    const action = within(document.body).getByRole('button', { name: 'Подтвердить' });
+    await expect(action.getBoundingClientRect().height).toBe(72);
+    await expect(action.closest('[data-interaction-mode]')).toHaveAttribute('data-interaction-mode', 'touch');
   }
 };
 

@@ -28,10 +28,11 @@
 
 .value {
   min-inline-size: 0;
+  color: var(--puntiro-semantic-color-text-primary);
   overflow-wrap: anywhere;
 }
 
-.trigger[data-placeholder] {
+.value[data-placeholder] {
   color: var(--puntiro-semantic-color-text-secondary);
 }
 
@@ -92,6 +93,7 @@
   display: grid;
   gap: 0.25rem;
   align-content: center;
+  box-sizing: border-box;
   min-block-size: var(--puntiro-semantic-size-control-touch);
   padding: 0.5rem 0.75rem;
   border-radius: var(--puntiro-semantic-radius-control);

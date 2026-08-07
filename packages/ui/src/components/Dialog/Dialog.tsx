@@ -7,6 +7,7 @@ import {
 } from 'react-aria-components';
 import { useId, useState } from 'react';
 import { Button } from '../Button/Button';
+import { usePuntiro } from '../../provider/usePuntiro';
 import type { DialogProps } from './Dialog.types';
 import styles from './Dialog.module.css';
 
@@ -28,6 +29,7 @@ export function Dialog({
   actions,
   isDismissible = true
 }: DialogProps) {
+  const { mode } = usePuntiro();
   const [isOpen, setIsOpen] = useState(false);
   const descriptionId = useId();
   const descriptionProps = description === undefined ? {} : { 'aria-describedby': descriptionId };
@@ -41,6 +43,7 @@ export function Dialog({
     {trigger}
     <ModalOverlay
       className={classes.overlay}
+      data-interaction-mode={mode}
       data-testid="dialog-overlay"
       isDismissable={isDismissible}
       isKeyboardDismissDisabled={!isDismissible}
