@@ -5,4 +5,4 @@ packages:
 saveExact: true
 engineStrict: true
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
