@@ -1,0 +1,34 @@
+@import '@fontsource/onest/400.css';
+@import '@fontsource/onest/500.css';
+@import '@fontsource/onest/600.css';
+@import '@fontsource/onest/700.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/700.css';
+
+:root {
+  font-family: var(--puntiro-semantic-font-body), sans-serif;
+  color: var(--puntiro-semantic-color-text-primary);
+  background: var(--puntiro-semantic-color-canvas-default);
+  --puntiro-control-min-block-size: var(--puntiro-semantic-size-control-touch);
+}
+
+[data-interaction-mode='touch'] {
+  --puntiro-control-min-block-size: var(--puntiro-semantic-size-control-touch);
+}
+
+[data-interaction-mode='standard'] {
+  --puntiro-control-min-block-size: var(--puntiro-semantic-size-control-standard);
+}
+
+:focus-visible {
+  outline: 2px solid var(--puntiro-semantic-color-focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--puntiro-semantic-color-focus-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --puntiro-semantic-motion-fast: 0ms;
+    --puntiro-semantic-motion-confirm: 0ms;
+  }
+}

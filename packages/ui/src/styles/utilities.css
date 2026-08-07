@@ -1,0 +1,7 @@
+.puntiro-control {
+  min-block-size: var(--puntiro-control-min-block-size);
+}
+
+.puntiro-font-label {
+  font-family: var(--puntiro-semantic-font-label), monospace;
+}
