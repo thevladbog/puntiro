@@ -1,0 +1,135 @@
+.root {
+  display: grid;
+  gap: var(--puntiro-semantic-space-compact);
+  color: var(--puntiro-semantic-color-text-primary);
+}
+
+.label {
+  font: 700 0.875rem/1.25 var(--puntiro-semantic-font-label), sans-serif;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--puntiro-semantic-space-compact);
+  min-block-size: var(--puntiro-semantic-size-control-touch);
+  min-inline-size: min(100%, 20rem);
+  padding-inline: 1rem;
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-control);
+  background: var(--puntiro-semantic-color-surface-default);
+  color: var(--puntiro-semantic-color-text-primary);
+  font: 600 1rem/1.25 var(--puntiro-semantic-font-body), sans-serif;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color var(--puntiro-semantic-motion-fast) ease, background-color var(--puntiro-semantic-motion-fast) ease;
+}
+
+.value {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.trigger[data-placeholder] {
+  color: var(--puntiro-semantic-color-text-secondary);
+}
+
+.trigger[data-hovered]:not([data-disabled]) {
+  border-color: var(--puntiro-semantic-color-action-primary);
+}
+
+.trigger:focus-visible,
+.option:focus-visible {
+  outline: 2px solid var(--puntiro-semantic-color-focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--puntiro-semantic-color-focus-offset);
+}
+
+.root[data-invalid] .trigger {
+  border-color: var(--puntiro-semantic-color-danger-default);
+}
+
+.root[data-disabled] .trigger {
+  background: var(--puntiro-semantic-color-disabled-background);
+  border-color: var(--puntiro-semantic-color-disabled-border);
+  color: var(--puntiro-semantic-color-disabled-foreground);
+  cursor: not-allowed;
+}
+
+.description,
+.error {
+  margin: 0;
+  font: 400 0.875rem/1.4 var(--puntiro-semantic-font-body), sans-serif;
+}
+
+.description {
+  color: var(--puntiro-semantic-color-text-secondary);
+}
+
+.error {
+  color: var(--puntiro-semantic-color-text-primary);
+}
+
+.popover {
+  max-inline-size: min(32rem, calc(100vw - 2rem));
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-control);
+  background: var(--puntiro-semantic-color-surface-default);
+  color: var(--puntiro-semantic-color-text-primary);
+  box-shadow: 0 0.25rem 0.75rem color-mix(in srgb, var(--puntiro-semantic-color-text-primary) 20%, transparent);
+}
+
+.listBox {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: var(--puntiro-semantic-space-compact);
+  outline: none;
+}
+
+.option {
+  display: grid;
+  gap: 0.25rem;
+  align-content: center;
+  min-block-size: var(--puntiro-semantic-size-control-touch);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--puntiro-semantic-radius-control);
+  cursor: pointer;
+}
+
+.option[data-hovered],
+.option[data-focused] {
+  background: var(--puntiro-semantic-color-surface-muted);
+}
+
+.option[data-selected] {
+  background: var(--puntiro-semantic-color-selected-background);
+}
+
+.option[data-disabled] {
+  color: var(--puntiro-semantic-color-text-secondary);
+  cursor: not-allowed;
+}
+
+.optionLabel {
+  font: 600 1rem/1.25 var(--puntiro-semantic-font-body), sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.optionDescription {
+  color: var(--puntiro-semantic-color-text-secondary);
+  font: 400 0.8125rem/1.35 var(--puntiro-semantic-font-body), sans-serif;
+  overflow-wrap: anywhere;
+}
+
+:global([data-interaction-mode='standard']) .trigger,
+:global([data-interaction-mode='standard']) .option {
+  min-block-size: var(--puntiro-semantic-size-control-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger {
+    transition: none;
+  }
+}

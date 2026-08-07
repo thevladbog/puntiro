@@ -1,0 +1,73 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: var(--puntiro-semantic-space-comfortable);
+  background: color-mix(in srgb, var(--puntiro-semantic-color-text-primary) 52%, transparent);
+  opacity: 1;
+  transition: opacity var(--puntiro-semantic-motion-confirm) ease;
+}
+
+.overlay[data-entering],
+.overlay[data-exiting] {
+  opacity: 0;
+}
+
+.modal {
+  inline-size: min(100%, 40rem);
+  max-block-size: min(100%, 44rem);
+  overflow: auto;
+  border: 1px solid var(--puntiro-component-dialog-border);
+  border-radius: var(--puntiro-component-dialog-radius);
+  background: var(--puntiro-component-dialog-surface);
+  color: var(--puntiro-semantic-color-text-primary);
+  box-shadow: 0 0.5rem 2rem color-mix(in srgb, var(--puntiro-semantic-color-text-primary) 30%, transparent);
+  transform: translateY(0);
+  transition: transform var(--puntiro-semantic-motion-confirm) ease;
+}
+
+.overlay[data-entering] .modal,
+.overlay[data-exiting] .modal {
+  transform: translateY(0.5rem);
+}
+
+.dialog {
+  display: grid;
+  gap: var(--puntiro-semantic-space-comfortable);
+  padding: clamp(1rem, 3vw, 2rem);
+  outline: none;
+}
+
+.title {
+  margin: 0;
+  font: 700 clamp(1.25rem, 3vw, 1.75rem)/1.15 var(--puntiro-semantic-font-body), sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.description,
+.content {
+  margin: 0;
+  color: var(--puntiro-semantic-color-text-secondary);
+  font: 400 1rem/1.5 var(--puntiro-semantic-font-body), sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.content :where(p, ul, ol) {
+  margin-block: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--puntiro-semantic-space-compact);
+  justify-content: flex-end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .modal {
+    transition: none;
+  }
+}

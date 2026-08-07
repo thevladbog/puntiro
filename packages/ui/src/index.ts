@@ -23,6 +23,12 @@ export type { ButtonProps, ButtonVariant, IconButtonProps } from './components/B
 export { NumberInput } from './components/NumberInput/NumberInput';
 export type { NumberInputProps } from './components/NumberInput/NumberInput.types';
 
+export { Select } from './components/Select/Select';
+export type { SelectOption, SelectProps } from './components/Select/Select.types';
+
+export { Dialog } from './components/Dialog/Dialog';
+export type { DialogAction, DialogProps } from './components/Dialog/Dialog.types';
+
 export { Surface } from './components/Surface/Surface';
 export type { SurfaceProps } from './components/Surface/Surface.types';
 export { StatusBadge } from './components/StatusBadge/StatusBadge';
