@@ -1,6 +1,6 @@
 import { useId } from 'react';
-import { StatusBadge } from '../../components/StatusBadge/StatusBadge';
 import type { FeedbackTone } from '../../components/StatusBadge/StatusBadge.types';
+import { StatusBadgeVisual } from '../../components/StatusBadge/StatusBadgeVisual';
 import { usePuntiro } from '../../provider/usePuntiro';
 import type { Locale } from '../../provider/types';
 import type { ShipmentTaskCardProps, ShipmentTaskStatus } from './ShipmentTaskCard.types';
@@ -83,6 +83,6 @@ export function ShipmentTaskCard({
       <span><span className={styles.timestampLabel}>{copy.received}</span>{formatTimestamp(receivedAt, locale)}</span>
       {plannedShipAt ? <span><span className={styles.timestampLabel}>{copy.planned}</span>{formatTimestamp(plannedShipAt, locale)}</span> : null}
     </span>
-    <span id={statusId}><StatusBadge tone={statusTone[status]} label={copy.statuses[status]} announce={false} /></span>
+    <span id={statusId}><StatusBadgeVisual tone={statusTone[status]} label={copy.statuses[status]} /></span>
   </button>;
 }

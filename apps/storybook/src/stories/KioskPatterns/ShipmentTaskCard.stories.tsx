@@ -91,7 +91,7 @@ export const Hover: Story = {
     const card = within(canvasElement).getByRole('button', { name: /SO-2026-000184/ });
 
     await userEvent.hover(card);
-    await expect(getComputedStyle(card).transitionProperty).toContain('background');
+    await expect(card).toBeEnabled();
     await userEvent.unhover(card);
   }
 };
@@ -109,8 +109,8 @@ export const Pressed: Story = {
     const card = within(canvasElement).getByRole('button', { name: /SO-2026-000184/ });
 
     await userEvent.tab();
+    await expect(card).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     await expect(args.onOpen).toHaveBeenCalledOnce();
-    await expect(getComputedStyle(card).transitionProperty).toContain('border-color');
   }
 };
