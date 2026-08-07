@@ -2,7 +2,7 @@ import type { StorybookConfig } from '@storybook/react-vite';
 import { fileURLToPath } from 'node:url';
 
 const config = {
-  stories: ['../src/stories/**/*.stories.@(ts|tsx)'],
+  stories: ['../src/stories/**/*.stories.@(ts|tsx)', '../src/docs/**/*.mdx'],
   staticDirs: ['../public'],
   addons: ['@storybook/addon-docs', '@storybook/addon-a11y', '@storybook/addon-vitest'],
   framework: '@storybook/react-vite',
