@@ -13,6 +13,8 @@
 - Manager normal text contrast is at least `4.5:1`; UI boundaries and focus indicators are at least `3:1`.
 - Manager primary text is `#F2F0E8` on `#171914`; muted text is `#C8C8BE`; supported selected/accent roles use `#171914` on `#FF5A1F`.
 - Manager controls use `#292C26` with `#FFFDF6` text.
+- Manager branding uses `/puntiro-mark-on-dark.svg`; the light Docs theme keeps
+  `/puntiro-mark.svg`.
 - Component preview and Docs remain light; existing component screenshot baselines must not change.
 - Use only Storybook's supported theming API; do not add CSS selectors targeting manager internals.
 - Do not change Puntiro tokens, components, public APIs, stories, product screens, or hardware behavior.
@@ -30,6 +32,10 @@ The browser contract must assert this selected foreground/background pair and
 the unselected `rgb(242, 240, 232)` on `rgb(23, 25, 20)` pair before measuring
 contrast. This keeps the contract on stable rendered behavior rather than a
 `.sidebar-item` implementation detail.
+
+It must also rasterize the actual manager brand image and verify that at least
+90% of fully opaque mark pixels reach `3:1` against the resolved dark manager
+background, preventing the dark-ink mark from disappearing again.
 
 ---
 

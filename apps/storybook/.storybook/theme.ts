@@ -6,12 +6,12 @@ const brandIdentity = {
   appBorderRadius: 12,
   fontBase: 'Onest, Segoe UI, Arial, sans-serif',
   fontCode: 'IBM Plex Mono, Cascadia Mono, Consolas, monospace',
-  brandTitle: 'Puntiro',
-  brandImage: '/puntiro-mark.svg'
+  brandTitle: 'Puntiro'
 };
 
 export const managerTheme = create({
   ...brandIdentity,
+  brandImage: '/puntiro-mark-on-dark.svg',
   base: 'dark',
   appBg: '#171914',
   appContentBg: '#171914',
@@ -37,6 +37,7 @@ export const managerTheme = create({
 
 export const docsTheme = create({
   ...brandIdentity,
+  brandImage: '/puntiro-mark.svg',
   base: 'light',
   appBg: '#F2F0E8',
   appContentBg: '#FFFDF6',

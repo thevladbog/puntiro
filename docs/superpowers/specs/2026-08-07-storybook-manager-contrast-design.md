@@ -25,6 +25,8 @@ Manager color roles:
 - selected/accent roles: `#171914` on `#FF5A1F` (`5.68:1`) where the
   supported theme role is used;
 - dark controls and inputs: `#292C26` with `#FFFDF6` text;
+- manager brand mark: dedicated on-dark P-Sequence variant with Label Paper
+  `#F2F0E8` ink and the unchanged Handoff Orange signal;
 - component preview canvas: light `#FFFDF6` / `#F2F0E8` surfaces;
 - Docs theme: retain its independent light palette.
 
@@ -70,6 +72,10 @@ The browser check must assert the explicit computed foreground/background pair
 for selected and unselected sidebar stories before calculating contrast, rather
 than rely only on a screenshot. Existing component visual baselines must remain
 unchanged because the preview canvas is not being redesigned.
+
+The rendered manager brand image must also keep at least 90% of its fully
+opaque pixels at `3:1` or better against the resolved manager background. The
+original dark-ink mark remains the light-surface asset.
 
 ## Verification
 
