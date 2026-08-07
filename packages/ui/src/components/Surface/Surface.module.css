@@ -1,0 +1,21 @@
+.root {
+  background: var(--puntiro-semantic-color-surface-default);
+  border-radius: var(--puntiro-semantic-radius-surface);
+  color: var(--puntiro-semantic-color-text-primary);
+}
+
+.plain { border: 0; }
+
+.raised {
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  background: var(--puntiro-semantic-color-surface-default);
+}
+
+.outlined {
+  border: 2px solid var(--puntiro-semantic-color-border-default);
+  background: var(--puntiro-semantic-color-surface-muted);
+}
+
+.none { padding: 0; }
+.compact { padding: var(--puntiro-reference-space-2); }
+.comfortable { padding: var(--puntiro-reference-space-3); }

@@ -14,6 +14,7 @@
 .puntiro-start__map section, .puntiro-start__preview { background: var(--puntiro-semantic-color-surface-default); border: 1px solid var(--puntiro-semantic-color-border-default); border-radius: var(--puntiro-semantic-radius-surface); padding: 24px; }
 .puntiro-start__map h3, .puntiro-start__preview strong { font-family: var(--puntiro-semantic-font-label); font-size: 14px; letter-spacing: .03em; margin: 0 0 8px; }
 .puntiro-start__preview { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+.puntiro-start__preview-controls { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; }
 .puntiro-token-gallery { margin-top: 24px; overflow-x: auto; }
 .puntiro-token-gallery table { border-collapse: collapse; min-width: 480px; width: 100%; }
 .puntiro-token-gallery th, .puntiro-token-gallery td { border-bottom: 1px solid var(--puntiro-semantic-color-border-default); padding: 12px 8px; text-align: left; }

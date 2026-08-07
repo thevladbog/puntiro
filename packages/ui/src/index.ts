@@ -20,4 +20,13 @@ export { Button } from './components/Button/Button';
 export { IconButton } from './components/IconButton/IconButton';
 export type { ButtonProps, ButtonVariant, IconButtonProps } from './components/Button/Button.types';
 
+export { Surface } from './components/Surface/Surface';
+export type { SurfaceProps } from './components/Surface/Surface.types';
+export { StatusBadge } from './components/StatusBadge/StatusBadge';
+export type { FeedbackTone, StatusBadgeProps } from './components/StatusBadge/StatusBadge.types';
+export { InlineMessage } from './components/InlineMessage/InlineMessage';
+export type { InlineMessageProps } from './components/InlineMessage/InlineMessage.types';
+export { ProgressIndicator } from './components/ProgressIndicator/ProgressIndicator';
+export type { ProgressIndicatorProps } from './components/ProgressIndicator/ProgressIndicator.types';
+
 export const puntiroUiVersion = '0.1.0' as const;

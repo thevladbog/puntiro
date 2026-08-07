@@ -77,8 +77,9 @@ it('assembles the Start preview from a provided live control', () => {
   const source = readFileSync(new URL('./Start.mdx', import.meta.url), 'utf8');
 
   expect(html).toContain('<button type="button">Напечатать</button>');
-  expect(source).toContain("import { Button } from '@puntiro/ui';");
-  expect(source).toContain('<StartLayout preview={(locale) => <Button');
+  expect(source).toContain("import { Button, StatusBadge } from '@puntiro/ui';");
+  expect(source).toContain('<StartLayout preview={(locale) => <div');
+  expect(source).toContain('<StatusBadge tone="success"');
   expect(source).not.toContain('Компоненты появятся здесь после их реализации.');
 });
 
@@ -91,6 +92,7 @@ it('localizes the typed Start Button preview with the provider locale', () => {
   expect(ruHtml).toContain('Напечатать');
   expect(enHtml).toContain('Print');
   expect(source).toContain("locale === 'ru' ? 'Напечатать' : 'Print'");
+  expect(source).toContain("locale === 'ru' ? 'Готов к печати' : 'Ready to print'");
 });
 
 it('documents the localization and icon accessibility contracts in both locales', () => {

@@ -1,0 +1,20 @@
+.root {
+  align-items: flex-start;
+  background: var(--puntiro-semantic-color-surface-muted);
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-control);
+  color: var(--puntiro-semantic-color-text-primary);
+  display: flex;
+  gap: 0.75rem;
+  padding: var(--puntiro-reference-space-2);
+}
+
+.root :global(svg) { margin-block-start: 0.125rem; }
+.content { min-inline-size: 0; }
+.content strong { display: block; font-weight: 700; }
+.description { color: var(--puntiro-semantic-color-text-secondary); line-height: 1.5; margin-block-start: 0.25rem; }
+.neutral { border-color: var(--puntiro-semantic-color-border-default); }
+.info { border-color: var(--puntiro-semantic-color-action-primary); }
+.success { border-color: var(--puntiro-semantic-color-success-default); }
+.warning { border-color: var(--puntiro-semantic-color-warning-default); }
+.danger { border-color: var(--puntiro-semantic-color-danger-default); }
