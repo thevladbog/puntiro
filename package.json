@@ -9,16 +9,17 @@
     "pnpm": "11.17.0"
   },
   "scripts": {
-    "build": "pnpm tokens:build && pnpm --filter @puntiro/ui build && pnpm storybook:build",
-    "typecheck": "pnpm -r typecheck",
+    "build": "corepack pnpm run tokens:build && corepack pnpm --filter @puntiro/ui build && corepack pnpm run storybook:build",
+    "check": "corepack pnpm run tokens:check && corepack pnpm run typecheck && corepack pnpm run lint && corepack pnpm run test && corepack pnpm run test:storybook && corepack pnpm run storybook:build && corepack pnpm run test:visual",
+    "typecheck": "corepack pnpm -r typecheck",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --project=unit",
     "test:storybook": "vitest run --project=storybook",
     "test:visual": "playwright test --config apps/storybook/playwright.config.ts",
-    "tokens:build": "pnpm --filter @puntiro/tokens build",
+    "tokens:build": "corepack pnpm --filter @puntiro/tokens build",
     "tokens:check": "node scripts/check-generated.mjs",
-    "storybook": "pnpm --filter @puntiro/storybook storybook",
-    "storybook:build": "pnpm --filter @puntiro/storybook build"
+    "storybook": "corepack pnpm --filter @puntiro/storybook storybook",
+    "storybook:build": "corepack pnpm --filter @puntiro/storybook build"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

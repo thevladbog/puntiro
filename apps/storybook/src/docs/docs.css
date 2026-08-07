@@ -60,6 +60,45 @@
   padding: 20px;
 }
 
+.puntiro-docs__review-status {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.puntiro-docs__review-status > div {
+  align-items: start;
+  border-bottom: 1px solid var(--puntiro-semantic-color-border-default);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(180px, 0.65fr) minmax(240px, 1fr);
+  padding: 0 0 12px;
+}
+
+.puntiro-docs__review-status dt {
+  font-weight: 600;
+}
+
+.puntiro-docs__review-status dd {
+  margin: 0;
+}
+
+.puntiro-docs__maturity-overview {
+  background: var(--puntiro-semantic-color-surface-muted);
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-surface);
+  margin-top: 32px;
+  padding: 24px;
+}
+
+.puntiro-docs__maturity-overview h2 {
+  margin-top: 0;
+}
+
+.puntiro-docs__maturity-overview p + p {
+  margin-top: 12px;
+}
+
 .puntiro-docs__maturity {
   border: 1px solid currentColor;
   border-radius: var(--puntiro-semantic-radius-label);
@@ -80,5 +119,12 @@
 @media (prefers-reduced-motion: no-preference) {
   .puntiro-docs__guidance > div {
     transition: border-color var(--puntiro-semantic-motion-fast) ease;
+  }
+}
+
+@media (max-width: 700px) {
+  .puntiro-docs__review-status > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }

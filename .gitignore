@@ -5,3 +5,6 @@ dist/
 storybook-static/
 playwright-report/
 test-results/
+coverage/
+*.tsbuildinfo
+.DS_Store
