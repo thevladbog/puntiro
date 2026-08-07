@@ -1,6 +1,6 @@
 .root {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--puntiro-semantic-space-compact);
   color: var(--puntiro-semantic-color-text-primary);
 }
 
@@ -79,10 +79,6 @@
 
 .error {
   color: var(--puntiro-semantic-color-text-primary);
-}
-
-.root[data-disabled] {
-  color: var(--puntiro-semantic-color-disabled-foreground);
 }
 
 .root[data-disabled] .group,

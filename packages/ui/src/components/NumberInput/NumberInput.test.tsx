@@ -19,5 +19,22 @@ describe('NumberInput', () => {
     expect(html).toContain('aria-valuemin="1"');
     expect(html).toContain('aria-valuemax="100"');
     expect(html).toContain('aria-valuenow="2"');
+    expect(html).toContain('aria-valuetext="2"');
+    expect(html).toContain('aria-roledescription="Числовое поле"');
+  });
+
+  it.each([
+    ['minValue', Number.NaN, 'minValue must be finite'],
+    ['maxValue', Number.POSITIVE_INFINITY, 'maxValue must be finite'],
+    ['value', Number.NaN, 'value must be finite'],
+    ['defaultValue', Number.NEGATIVE_INFINITY, 'defaultValue must be finite'],
+    ['step', 0, 'step must be finite and greater than zero'],
+    ['step', -1, 'step must be finite and greater than zero'],
+    ['step', Number.NaN, 'step must be finite and greater than zero'],
+    ['step', Number.POSITIVE_INFINITY, 'step must be finite and greater than zero']
+  ] as const)('rejects invalid %s configuration', (prop, value, message) => {
+    expect(() => renderToStaticMarkup(
+      <PuntiroProvider><NumberInput label="Количество мест" {...{ [prop]: value }} /></PuntiroProvider>
+    )).toThrow(message);
   });
 });
