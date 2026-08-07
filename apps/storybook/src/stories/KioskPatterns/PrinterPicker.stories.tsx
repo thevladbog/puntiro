@@ -67,6 +67,7 @@ export const TouchSelection: Story = {
 
 export const OnePrinter: Story = { args: { printers: readyPrinters.slice(0, 1) } };
 export const MultiplePrinters: Story = { args: { printers: readyPrinters } };
+export const MultipleReady: Story = { args: { printers: readyPrinters } };
 export const MixedZplTspl: Story = { args: { printers: mixedPrinters } };
 export const Busy: Story = { args: { printers: mixedPrinters.slice(1, 2) } };
 export const Offline: Story = { args: { printers: mixedPrinters.slice(2, 3) } };

@@ -29,6 +29,7 @@ export const Printing: Story = {
     await expect(canvas.getByText('Zebra ZD421')).toBeVisible();
   }
 };
+export const Partial: Story = {};
 export const Completed: Story = {
   args: { completed: 5, total: 5 },
   play: async ({ canvasElement }) => {

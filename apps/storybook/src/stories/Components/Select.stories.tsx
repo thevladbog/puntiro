@@ -11,6 +11,12 @@ const items = [
   { id: 'epl', label: 'EPL', isDisabled: true, description: 'Не поддерживается текущим заданием.' }
 ] as const;
 
+const englishItems = {
+  zpl: { label: 'ZPL', description: 'For compatible thermal printers.' },
+  tspl: { label: 'TSPL', description: 'For TSPL label printers.' },
+  epl: { label: 'EPL', description: 'Not supported by the current task.' }
+} as const;
+
 function tokenColor(canvasElement: HTMLElement, token: string) {
   const probe = document.createElement('span');
   probe.style.color = `var(${token})`;
@@ -25,7 +31,24 @@ const meta = {
   component: Select,
   tags: ['test'],
   parameters: { docs: { page: createDocsPage({ title: 'Select', maturity: 'beta', documentation: selectDocumentation }) } },
-  args: { label: 'Язык принтера', items, placeholder: 'Выберите язык' }
+  args: { label: 'Язык принтера', items, placeholder: 'Выберите язык' },
+  render: (args, context) => {
+    const isEnglish = context.globals.locale === 'en';
+    const localizedItems = isEnglish
+      ? args.items.map((item) => {
+        const copy = englishItems[item.id as keyof typeof englishItems];
+        return copy ? { ...item, ...copy } : item;
+      })
+      : args.items;
+
+    return <Select
+      {...args}
+      label={isEnglish && args.label === 'Язык принтера' ? 'Printer language' : args.label}
+      placeholder={isEnglish && args.placeholder === 'Выберите язык' ? 'Choose a language' : args.placeholder}
+      description={isEnglish && args.description === 'Выберите поддерживаемый язык.' ? 'Choose a supported language.' : args.description}
+      items={localizedItems}
+    />;
+  }
 } satisfies Meta<typeof Select>;
 
 export default meta;
@@ -35,8 +58,9 @@ export const Placeholder: Story = {
   args: { description: 'Выберите поддерживаемый язык.' },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const trigger = canvas.getByRole('button', { name: 'Язык принтера' });
-    await expect(trigger).toHaveTextContent('Выберите язык');
+    const isEnglish = canvasElement.querySelector('[data-locale]')?.getAttribute('data-locale') === 'en';
+    const trigger = canvas.getByRole('button', { name: isEnglish ? 'Printer language' : 'Язык принтера' });
+    await expect(trigger).toHaveTextContent(isEnglish ? 'Choose a language' : 'Выберите язык');
     await expect(getComputedStyle(trigger.querySelector('[data-placeholder]')!).color).toBe(tokenColor(canvasElement, '--puntiro-semantic-color-text-secondary'));
   }
 };

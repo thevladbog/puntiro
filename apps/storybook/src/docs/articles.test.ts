@@ -20,6 +20,16 @@ const articles = [
   ['foundations/Focus.mdx', 'foundation.focus'],
   ['foundations/Accessibility.mdx', 'foundation.accessibility'],
   ['foundations/Tokens.mdx', 'foundation.tokens'],
+  ['rules/Levels.mdx', 'rule.levels'],
+  ['rules/InteractionModes.mdx', 'rule.interactionModes'],
+  ['rules/KioskLayout.mdx', 'rule.kioskLayout'],
+  ['rules/ActionHierarchy.mdx', 'rule.actionHierarchy'],
+  ['rules/Content.mdx', 'rule.content'],
+  ['rules/Feedback.mdx', 'rule.feedback'],
+  ['rules/OfflineAndPrinting.mdx', 'rule.offlineAndPrinting'],
+  ['rules/DoAndDont.mdx', 'rule.doAndDont'],
+  ['compositions/Introduction.mdx', 'composition.introduction'],
+  ['compositions/Contract.mdx', 'composition.contract'],
 ] as const;
 
 it('provides complete bilingual copy for every article ID', () => {
@@ -113,5 +123,24 @@ it('keeps ordinary Russian prose localized', () => {
   const source = readFileSync(new URL('./content.ru.ts', import.meta.url), 'utf8');
   for (const term of ['landscape', 'Registration stem', 'controls', 'surfaces', 'Keyboard focus']) {
     expect(source).not.toContain(term);
+  }
+});
+
+it('documents composition boundaries without rendering product screens', () => {
+  const ruText = [ruContent['composition.introduction'], ruContent['composition.contract']]
+    .flatMap((article) => [article.lead, ...article.sections.map((section) => section.body)])
+    .join(' ');
+  const enText = [enContent['composition.introduction'], enContent['composition.contract']]
+    .flatMap((article) => [article.lead, ...article.sections.map((section) => section.body)])
+    .join(' ');
+
+  expect(ruText).toContain('пока не отрисовывает продуктовые экраны');
+  expect(ruText).toContain('API, persistence, routing, синхронизация и hardware adapters не входят');
+  expect(enText).toContain('without drawing product screens yet');
+  expect(enText).toContain('APIs, persistence, routing, synchronization, and hardware adapters stay outside');
+
+  for (const file of ['compositions/Introduction.mdx', 'compositions/Contract.mdx']) {
+    const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+    expect(source).not.toMatch(/<(Button|Dialog|ShipmentTaskCard|PrinterPicker|UnknownPrintResult)\b/u);
   }
 });

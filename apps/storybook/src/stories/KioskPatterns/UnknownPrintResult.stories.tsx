@@ -23,6 +23,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+export const Default: Story = {};
 export const AwaitingDecision: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);

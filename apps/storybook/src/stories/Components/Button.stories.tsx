@@ -9,7 +9,10 @@ const meta = {
   component: Button,
   tags: ['test'],
   parameters: { docs: { page: createDocsPage({ title: 'Button', maturity: 'beta', documentation: buttonDocumentation }) } },
-  args: { children: 'Напечатать', onPress: fn() }
+  args: { children: 'Напечатать', onPress: fn() },
+  render: (args, context) => <Button {...args}>
+    {context.globals.locale === 'en' && args.children === 'Напечатать' ? 'Print labels' : args.children}
+  </Button>
 } satisfies Meta<typeof Button>;
 
 export default meta;
@@ -21,7 +24,7 @@ export const Primary: Story = {
   args: { variant: 'primary' },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole('button', { name: 'Напечатать' });
+    const button = canvas.getByRole('button');
     await userEvent.click(button);
     await expect(args.onPress).toHaveBeenCalledOnce();
     await expect(button).toHaveAttribute('data-primary-action', 'true');

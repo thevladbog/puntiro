@@ -13,7 +13,11 @@ const meta = {
   args: {
     label: 'Количество мест',
     defaultValue: 1
-  }
+  },
+  render: (args, context) => <NumberInput
+    {...args}
+    label={context.globals.locale === 'en' && args.label === 'Количество мест' ? 'Number of packages' : args.label}
+  />
 } satisfies Meta<typeof NumberInput>;
 
 export default meta;
@@ -22,12 +26,13 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const input = canvas.getByRole('spinbutton', { name: 'Количество мест' });
+    const input = canvas.getByRole('spinbutton');
     const wheelEvents: WheelEvent[] = [];
     const observeWheel = (event: WheelEvent) => wheelEvents.push(event);
+    const locale = canvasElement.querySelector('[data-locale]')?.getAttribute('data-locale');
 
     canvasElement.addEventListener('wheel', observeWheel);
-    await expect(input).toHaveAttribute('aria-roledescription', 'Числовое поле');
+    await expect(input).toHaveAttribute('aria-roledescription', locale === 'en' ? 'Number field' : 'Числовое поле');
     await expect(input).toHaveAttribute('aria-valuetext', '1');
 
     await userEvent.clear(input);
