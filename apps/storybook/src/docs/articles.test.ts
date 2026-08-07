@@ -68,6 +68,20 @@ it('keeps Start navigation pointed at indexed Storybook documentation entries', 
   expect(html).toContain('target="_top"');
 });
 
+it('assembles the Start preview from a provided live control', () => {
+  const html = renderToStaticMarkup(
+    createElement(PuntiroProvider, null, createElement(StartLayout, {
+      preview: createElement('button', { type: 'button' }, 'Напечатать')
+    })),
+  );
+  const source = readFileSync(new URL('./Start.mdx', import.meta.url), 'utf8');
+
+  expect(html).toContain('<button type="button">Напечатать</button>');
+  expect(source).toContain("import { Button } from '@puntiro/ui';");
+  expect(source).toContain('<StartLayout preview={<Button');
+  expect(source).not.toContain('Компоненты появятся здесь после их реализации.');
+});
+
 it('documents the localization and icon accessibility contracts in both locales', () => {
   const ruText = Object.values(ruContent).flatMap((article) => [article.lead, ...article.sections.map((section) => section.body)]).join(' ');
   const enText = Object.values(enContent).flatMap((article) => [article.lead, ...article.sections.map((section) => section.body)]).join(' ');

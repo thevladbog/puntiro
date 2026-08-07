@@ -1,0 +1,44 @@
+.root {
+  display: inline-grid;
+  place-items: center;
+  inline-size: var(--puntiro-control-min-block-size);
+  min-inline-size: var(--puntiro-control-min-block-size);
+  block-size: var(--puntiro-control-min-block-size);
+  min-block-size: var(--puntiro-control-min-block-size);
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-control);
+  color: var(--puntiro-semantic-color-text-primary);
+  cursor: pointer;
+  transition: transform var(--puntiro-semantic-motion-fast) ease, background-color var(--puntiro-semantic-motion-fast) ease, border-color var(--puntiro-semantic-motion-fast) ease;
+}
+
+.secondary {
+  background: var(--puntiro-semantic-color-surface-default);
+}
+
+.danger {
+  background: var(--puntiro-semantic-color-danger-default);
+  border-color: var(--puntiro-semantic-color-danger-default);
+  color: var(--puntiro-semantic-color-text-inverse);
+}
+
+.ghost {
+  background: transparent;
+}
+
+.root[data-pressed] {
+  transform: translateY(1px);
+}
+
+.root[data-disabled] {
+  background: var(--puntiro-semantic-color-disabled-background);
+  border-color: var(--puntiro-semantic-color-disabled-border);
+  color: var(--puntiro-semantic-color-disabled-foreground);
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    transition: none;
+  }
+}

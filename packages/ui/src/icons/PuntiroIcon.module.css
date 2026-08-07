@@ -1,0 +1,7 @@
+.icon {
+  display: block;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  flex: none;
+  stroke-width: 2;
+}

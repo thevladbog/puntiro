@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react';
 import { usePuntiro } from '@puntiro/ui';
 import './start.css';
 
 const labels = {
-  ru: { brandAction: 'Основы: бренд', tokensAction: 'Основы: токены', map: 'Карта системы', brand: 'Бренд и токены', brandCopy: 'Утвержденные значения и роли.', behavior: 'Поведение', behaviorCopy: 'Доступные контракты взаимодействия.', patterns: 'Паттерны', patternsCopy: 'Доменные сборки без ввода-вывода.', rules: 'Правила', rulesCopy: 'Композиция, контент и доступность.', preview: 'Предпросмотр', previewCopy: 'Компоненты появятся здесь после их реализации.' },
-  en: { brandAction: 'Foundations: Brand', tokensAction: 'Foundations: Tokens', map: 'System map', brand: 'Brand and tokens', brandCopy: 'Approved values and roles.', behavior: 'Behavior', behaviorCopy: 'Accessible interaction contracts.', patterns: 'Patterns', patternsCopy: 'Domain assemblies without I/O.', rules: 'Rules', rulesCopy: 'Composition, content, and accessibility.', preview: 'Live preview', previewCopy: 'Components will appear here after implementation.' },
+  ru: { brandAction: 'Основы: бренд', tokensAction: 'Основы: токены', map: 'Карта системы', brand: 'Бренд и токены', brandCopy: 'Утвержденные значения и роли.', behavior: 'Поведение', behaviorCopy: 'Доступные контракты взаимодействия.', patterns: 'Паттерны', patternsCopy: 'Доменные сборки без ввода-вывода.', rules: 'Правила', rulesCopy: 'Композиция, контент и доступность.', preview: 'Предпросмотр' },
+  en: { brandAction: 'Foundations: Brand', tokensAction: 'Foundations: Tokens', map: 'System map', brand: 'Brand and tokens', brandCopy: 'Approved values and roles.', behavior: 'Behavior', behaviorCopy: 'Accessible interaction contracts.', patterns: 'Patterns', patternsCopy: 'Domain assemblies without I/O.', rules: 'Rules', rulesCopy: 'Composition, content, and accessibility.', preview: 'Live preview' },
 } as const;
 
 export const START_ACTIONS = [
@@ -11,7 +12,7 @@ export const START_ACTIONS = [
   { id: 'foundations-tokens--docs', href: './?path=/docs/foundations-tokens--docs', label: 'tokensAction' },
 ] as const;
 
-export function StartLayout() {
+export function StartLayout({ preview }: { preview?: ReactNode }) {
   const { locale } = usePuntiro();
   const copy = labels[locale];
 
@@ -23,6 +24,6 @@ export function StartLayout() {
       <h2 id="puntiro-system-map">{copy.map}</h2>
       <div>{[[copy.brand, copy.brandCopy], [copy.behavior, copy.behaviorCopy], [copy.patterns, copy.patternsCopy], [copy.rules, copy.rulesCopy]].map(([title, body]) => <section key={title}><h3>{title}</h3><p>{body}</p></section>)}</div>
     </section>
-    <aside className="puntiro-start__preview" aria-label={copy.preview}><strong>{copy.preview}</strong><span>{copy.previewCopy}</span></aside>
+    {preview ? <aside className="puntiro-start__preview" aria-label={copy.preview}><strong>{copy.preview}</strong>{preview}</aside> : null}
   </>;
 }
