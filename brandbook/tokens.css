@@ -1,0 +1,50 @@
+:root {
+  /* Brand colors */
+  --puntiro-register-ink: #171914;
+  --puntiro-register-ink-soft: #292c26;
+  --puntiro-label-paper: #f2f0e8;
+  --puntiro-label-paper-strong: #fffdf6;
+  --puntiro-warehouse-steel: #8b9189;
+  --puntiro-registration-line: #c8c8be;
+  --puntiro-handoff-orange: #ff5a1f;
+  --puntiro-handoff-orange-soft: #ffc7b3;
+
+  /* Semantic colors */
+  --puntiro-status-ok: #267a53;
+  --puntiro-status-warning: #d08a00;
+  --puntiro-status-danger: #c93d33;
+
+  /* Product UI foundations */
+  --puntiro-space-unit: 8px;
+  --puntiro-touch-primary-min: 64px;
+  --puntiro-touch-primary-comfortable: 72px;
+  --puntiro-radius-label: 4px;
+  --puntiro-radius-control: 12px;
+  --puntiro-radius-surface: 24px;
+  --puntiro-border-selected: 2px;
+  --puntiro-motion-fast: 120ms;
+  --puntiro-motion-confirm: 180ms;
+
+  /* Typography */
+  --puntiro-font-sans: "Onest", "Segoe UI", Arial, sans-serif;
+  --puntiro-font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+
+  /* Brandbook compatibility aliases */
+  --ink: var(--puntiro-register-ink);
+  --ink-soft: var(--puntiro-register-ink-soft);
+  --paper: var(--puntiro-label-paper);
+  --paper-strong: var(--puntiro-label-paper-strong);
+  --steel: var(--puntiro-warehouse-steel);
+  --line: var(--puntiro-registration-line);
+  --signal: var(--puntiro-handoff-orange);
+  --signal-soft: var(--puntiro-handoff-orange-soft);
+  --ok: var(--puntiro-status-ok);
+  --warning: var(--puntiro-status-warning);
+  --danger: var(--puntiro-status-danger);
+  --r-sm: var(--puntiro-radius-label);
+  --r-md: var(--puntiro-radius-control);
+  --r-lg: var(--puntiro-radius-surface);
+  --shadow: 0 22px 70px rgba(10, 12, 9, 0.18);
+  --sans: var(--puntiro-font-sans);
+  --mono: var(--puntiro-font-mono);
+}

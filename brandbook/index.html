@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Puntiro — Brandbook 1.0</title>
+  <link rel="stylesheet" href="./tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+        #10120f;
+      background-size: 32px 32px;
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; }
+    button, input { font: inherit; }
+    svg { display: block; }
+
+    .shell {
+      width: min(1680px, calc(100vw - 48px));
+      margin: 24px auto 96px;
+    }
+
+    .topline {
+      height: 56px;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #d7dbd2;
+      border: 1px solid #30342e;
+      border-bottom: 0;
+      border-radius: 16px 16px 0 0;
+      background: rgba(17,19,16,.94);
+      font: 500 11px/1 var(--mono);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 9px;
+      background: var(--signal);
+      border-radius: 1px;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+      padding: 12px;
+      background: #2a2d28;
+      border-radius: 0 0 16px 16px;
+      box-shadow: 0 40px 120px rgba(0,0,0,.36);
+    }
+
+    .panel {
+      position: relative;
+      overflow: hidden;
+      min-height: 390px;
+      padding: 34px;
+      border-radius: var(--r-sm);
+      background: var(--paper);
+    }
+
+    .panel.dark { color: var(--paper); background: var(--ink); }
+    .panel.signal { color: var(--ink); background: var(--signal); }
+    .panel.white { background: var(--paper-strong); }
+    .panel.grid-bg {
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(rgba(23,25,20,.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23,25,20,.08) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .tall { min-height: 590px; }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 36px;
+      font: 600 10px/1.2 var(--mono);
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::after {
+      content: attr(data-no);
+      opacity: .48;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      margin-bottom: 24px;
+      font-size: clamp(56px, 7vw, 124px);
+      line-height: .88;
+      letter-spacing: -.065em;
+      font-weight: 760;
+    }
+    h2 {
+      margin-bottom: 16px;
+      font-size: clamp(34px, 3vw, 58px);
+      line-height: .98;
+      letter-spacing: -.045em;
+      font-weight: 720;
+    }
+    h3 {
+      margin-bottom: 10px;
+      font-size: 18px;
+      line-height: 1.15;
+      letter-spacing: -.02em;
+    }
+    p {
+      max-width: 62ch;
+      margin-bottom: 0;
+      color: inherit;
+      font-size: 15px;
+      line-height: 1.52;
+    }
+    .muted { color: var(--steel); }
+    .dark .muted { color: #adb2aa; }
+    .mono { font-family: var(--mono); }
+
+    .hero {
+      min-height: 620px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .hero-mark {
+      position: absolute;
+      right: -24px;
+      bottom: -20px;
+      width: min(48%, 420px);
+      color: var(--signal);
+      opacity: .96;
+    }
+
+    .hero-copy { position: relative; z-index: 2; max-width: 880px; }
+    .hero-copy p { max-width: 470px; color: #c3c8be; font-size: 18px; }
+    .hero-meta {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      gap: 36px;
+      align-items: flex-end;
+      font: 500 11px/1.4 var(--mono);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .logo-lockup {
+      display: inline-flex;
+      gap: 18px;
+      align-items: center;
+      color: currentColor;
+    }
+    .logo-lockup .mark { width: 54px; flex: 0 0 auto; }
+    .wordmark {
+      position: relative;
+      font-size: 46px;
+      line-height: 1;
+      font-weight: 760;
+      letter-spacing: -.055em;
+      text-transform: uppercase;
+    }
+    .wordmark .i-dot {
+      position: absolute;
+      top: -2px;
+      left: 67.6%;
+      width: .14em;
+      height: .14em;
+      background: var(--signal);
+      border-radius: 1px;
+    }
+
+    .sequence {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .sequence i {
+      display: block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-radius: 2px;
+      opacity: .25;
+    }
+    .sequence i.active { opacity: 1; background: var(--signal); border-color: var(--signal); }
+
+    .concepts {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .concept {
+      min-height: 245px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.36);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .concept.recommended { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+    .concept-top { display: flex; justify-content: space-between; gap: 16px; }
+    .concept-label { font: 600 10px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .badge { padding: 6px 8px; background: var(--signal); color: var(--ink); border-radius: 2px; font: 700 9px/1 var(--mono); text-transform: uppercase; }
+    .concept-visual { min-height: 110px; display: grid; place-items: center; }
+    .concept small { font: 500 11px/1.45 var(--mono); color: var(--steel); }
+    .recommended small { color: #b9beb5; }
+
+    .rail-logo { width: 150px; }
+    .label-cut {
+      width: 112px;
+      height: 78px;
+      border: 7px solid currentColor;
+      position: relative;
+    }
+    .label-cut::before {
+      content: "";
+      position: absolute;
+      right: -9px;
+      top: 25px;
+      width: 18px;
+      height: 18px;
+      background: var(--paper);
+      transform: rotate(45deg);
+    }
+    .label-cut::after {
+      content: "P";
+      position: absolute;
+      left: 18px;
+      top: 5px;
+      font: 760 52px/1 var(--sans);
+    }
+
+    .construction {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: end;
+      min-height: 455px;
+    }
+    .construction-stage {
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      position: relative;
+      border: 1px solid rgba(23,25,20,.18);
+      background-image:
+        linear-gradient(rgba(23,25,20,.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23,25,20,.08) 1px, transparent 1px);
+      background-size: 12.5% 12.5%;
+    }
+    .construction-stage::before,
+    .construction-stage::after {
+      content: "";
+      position: absolute;
+      background: rgba(255,90,31,.55);
+    }
+    .construction-stage::before { width: 1px; height: calc(100% + 24px); }
+    .construction-stage::after { height: 1px; width: calc(100% + 24px); }
+    .construction-stage .mark { width: 54%; color: var(--ink); }
+    .rules { display: grid; gap: 18px; }
+    .rule { padding-top: 14px; border-top: 1px solid var(--line); }
+    .rule b { display: block; margin-bottom: 4px; font: 700 12px/1.2 var(--mono); }
+    .rule span { font-size: 13px; line-height: 1.4; color: #62675f; }
+
+    .variant-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 26px;
+    }
+    .variant {
+      min-height: 148px;
+      padding: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+    }
+    .variant.dark { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+    .variant.orange { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+    .variant .logo-lockup { gap: 10px; }
+    .variant .logo-lockup .mark { width: 32px; }
+    .variant .logo-lockup .wordmark { font-size: 25px; }
+
+    .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 30px; }
+    .swatch {
+      min-height: 142px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid rgba(23,25,20,.12);
+    }
+    .swatch b { font: 700 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    .swatch span { font: 500 11px/1.4 var(--mono); }
+    .swatch.ink { color: var(--paper); background: var(--ink); }
+    .swatch.paper { background: var(--paper-strong); }
+    .swatch.steel { background: var(--steel); color: var(--ink); }
+    .swatch.signal { background: var(--signal); color: var(--ink); }
+
+    .type-sample { margin-top: 26px; }
+    .type-display { margin-bottom: 24px; font-size: clamp(58px, 6vw, 104px); line-height: .86; font-weight: 760; letter-spacing: -.07em; }
+    .type-row { display: flex; justify-content: space-between; gap: 24px; padding: 14px 0; border-top: 1px solid var(--line); }
+    .type-row b { font-size: 13px; }
+    .type-row span { font: 500 12px/1.4 var(--mono); color: #646961; }
+
+    .label-wrap { display: grid; place-items: center; min-height: 480px; perspective: 900px; }
+    .thermal-label {
+      width: min(100%, 540px);
+      aspect-ratio: 10 / 7;
+      padding: 26px;
+      background: #fff;
+      color: #000;
+      border: 1px solid #d1d1d1;
+      box-shadow: 0 26px 52px rgba(0,0,0,.22);
+      transform: rotate(-2deg);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 14px;
+    }
+    .label-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #000; padding-bottom: 12px; }
+    .label-head .logo-lockup { gap: 9px; }
+    .label-head .mark { width: 26px; }
+    .label-head .wordmark { font-size: 22px; }
+    .label-head .wordmark .i-dot { background: #000; }
+    .label-date { font: 700 11px/1 var(--mono); }
+    .shipment { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; }
+    .shipment small { display: block; margin-bottom: 4px; font: 700 10px/1 var(--mono); letter-spacing: .08em; }
+    .shipment-no { font-size: clamp(48px, 5vw, 78px); line-height: .88; font-weight: 800; letter-spacing: -.06em; }
+    .place { text-align: right; white-space: nowrap; }
+    .place b { display: block; font-size: 50px; line-height: .82; letter-spacing: -.07em; }
+    .place span { font: 700 11px/1 var(--mono); }
+    .barcode-area { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; }
+    .barcode { height: 62px; background: repeating-linear-gradient(90deg,#000 0 2px,transparent 2px 4px,#000 4px 5px,transparent 5px 8px,#000 8px 12px,transparent 12px 14px); }
+    .barcode-id { font: 700 10px/1.3 var(--mono); text-align: right; }
+
+    .kiosk {
+      margin-top: 22px;
+      min-height: 450px;
+      border: 9px solid #2c2f2a;
+      border-radius: 13px;
+      overflow: hidden;
+      background: #e8e8e1;
+      box-shadow: var(--shadow);
+    }
+    .kiosk-head { height: 72px; padding: 0 22px; color: var(--paper); background: var(--ink); display: flex; align-items: center; justify-content: space-between; }
+    .kiosk-head .logo-lockup { gap: 10px; }
+    .kiosk-head .mark { width: 30px; }
+    .kiosk-head .wordmark { font-size: 24px; }
+    .kiosk-status { display: flex; gap: 8px; align-items: center; font: 600 11px/1 var(--mono); }
+    .kiosk-status i { width: 9px; height: 9px; background: #62c98d; border-radius: 50%; }
+    .task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+    .task-card { min-height: 156px; padding: 20px; background: var(--paper-strong); border: 2px solid transparent; border-radius: 10px; display: flex; flex-direction: column; justify-content: space-between; }
+    .task-card.featured { border-color: var(--signal); box-shadow: inset 6px 0 var(--signal); }
+    .task-card small { font: 600 10px/1 var(--mono); color: #6c7169; }
+    .task-card b { font-size: 34px; letter-spacing: -.045em; }
+    .task-card footer { display: flex; justify-content: space-between; color: #676c64; font-size: 12px; }
+
+    .admin {
+      margin-top: 28px;
+      min-height: 320px;
+      color: var(--ink);
+      background: var(--paper-strong);
+      border-radius: 9px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .admin-head { height: 58px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .admin-head .logo-lockup { gap: 8px; }
+    .admin-head .mark { width: 26px; }
+    .admin-head .wordmark { font-size: 20px; }
+    .admin-body { padding: 18px; }
+    .admin-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .kpi { padding: 16px; border: 1px solid var(--line); }
+    .kpi span { display: block; margin-bottom: 12px; font: 600 9px/1 var(--mono); text-transform: uppercase; color: #777c74; }
+    .kpi b { font-size: 30px; letter-spacing: -.04em; }
+    .admin-line { margin-top: 16px; height: 78px; border-left: 4px solid var(--signal); background: #eeede6; }
+
+    .tokens { margin-top: 28px; display: grid; gap: 0; }
+    .token { display: grid; grid-template-columns: 120px 1fr auto; gap: 18px; align-items: center; min-height: 60px; border-top: 1px solid rgba(242,240,232,.18); font: 500 11px/1.3 var(--mono); }
+    .token:last-child { border-bottom: 1px solid rgba(242,240,232,.18); }
+    .token-name { color: #aeb3aa; }
+    .token-value { color: var(--signal-soft); }
+    .token-demo { display: flex; justify-content: flex-end; }
+    .touch-demo { width: 128px; height: 64px; display: grid; place-items: center; color: var(--ink); background: var(--signal); border-radius: 10px; font: 700 11px/1 var(--mono); }
+
+    .voice-list { margin: 26px 0 0; padding: 0; list-style: none; }
+    .voice-list li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 15px 0; border-top: 1px solid var(--line); font-size: 17px; }
+    .voice-list li::before { content: attr(data-n); font: 600 10px/1.6 var(--mono); color: var(--signal); }
+
+    .donts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 30px; }
+    .dont { min-height: 170px; padding: 16px; border: 1px solid var(--line); position: relative; display: grid; place-items: center; }
+    .dont::before, .dont::after { content: ""; position: absolute; left: 10%; top: 50%; width: 80%; height: 2px; background: var(--danger); transform: rotate(34deg); }
+    .dont::after { transform: rotate(-34deg); }
+    .dont small { position: absolute; left: 12px; bottom: 10px; font: 600 9px/1.2 var(--mono); text-transform: uppercase; }
+    .dont .mark { width: 72px; }
+    .dont.stretch .mark { transform: scaleX(1.65); }
+    .dont.rotate .mark { transform: rotate(22deg); }
+    .dont.effect .mark { filter: drop-shadow(7px 7px 0 #67c6ff); color: #7b4dff; }
+
+    .approval {
+      min-height: 420px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 50px;
+      align-items: end;
+    }
+    .approval h2 { max-width: 9ch; }
+    .checklist { display: grid; gap: 0; }
+    .check { min-height: 66px; display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: center; border-top: 1px solid rgba(242,240,232,.2); }
+    .check:last-child { border-bottom: 1px solid rgba(242,240,232,.2); }
+    .check i {
+      width: 14px;
+      height: 14px;
+      display: grid;
+      place-items: center;
+      color: var(--ink);
+      background: var(--signal);
+      border: 1px solid var(--signal);
+      font: 900 10px/1 var(--mono);
+      font-style: normal;
+    }
+    .check i::after { content: "✓"; }
+    .check b { font-size: 14px; }
+    .check span { color: #92978f; font: 500 10px/1 var(--mono); text-transform: uppercase; }
+
+    .footnote {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      margin-top: 18px;
+      color: #8e948a;
+      font: 500 10px/1.5 var(--mono);
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 1100px) {
+      .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+      .concepts { grid-template-columns: 1fr; }
+      .hero-mark { opacity: .26; width: 58%; }
+      .construction, .approval { grid-template-columns: 1fr; }
+      .panel { min-height: auto; }
+    }
+    @media (max-width: 640px) {
+      .shell { width: calc(100vw - 20px); margin-top: 10px; }
+      .board { padding: 6px; gap: 6px; }
+      .panel { padding: 24px; }
+      .topline { border-radius: 10px 10px 0 0; }
+      .variant-grid, .swatches, .task-grid, .admin-kpis, .donts { grid-template-columns: 1fr; }
+      .thermal-label { padding: 14px; }
+      .shipment-no { font-size: 42px; }
+      .place b { font-size: 34px; }
+      .token { grid-template-columns: 1fr; padding: 12px 0; }
+      .token-demo { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="p-sequence" viewBox="0 0 64 64">
+      <rect x="6" y="6" width="10" height="52" rx="1" fill="currentColor"/>
+      <rect x="20" y="6" width="14" height="10" rx="1" fill="currentColor"/>
+      <rect x="38" y="6" width="14" height="10" rx="1" fill="currentColor"/>
+      <rect x="48" y="20" width="10" height="10" rx="1" fill="currentColor"/>
+      <rect x="38" y="34" width="14" height="10" rx="1" fill="currentColor"/>
+      <rect x="20" y="34" width="14" height="10" rx="1" fill="currentColor"/>
+      <rect x="48" y="48" width="10" height="10" rx="1" fill="var(--signal, currentColor)"/>
+    </symbol>
+  </svg>
+
+  <main class="shell">
+    <div class="topline">
+      <span><i class="status-dot"></i>Brandbook / 1.0 · Approved</span>
+      <span>Puntiro · 07.08.2026</span>
+    </div>
+
+    <section class="board">
+      <article class="panel dark span-8 hero">
+        <div class="eyebrow" data-no="01">Основная идея</div>
+        <div class="hero-copy">
+          <div class="logo-lockup" style="margin-bottom:52px">
+            <svg class="mark" aria-label="Puntiro"><use href="#p-sequence"/></svg>
+            <div class="wordmark">Puntiro<span class="i-dot"></span></div>
+          </div>
+          <h1>Каждое место<br>на своём месте.</h1>
+          <p>Точный промышленный инструмент, который превращает отгрузку в ясную последовательность маркированных мест.</p>
+        </div>
+        <div class="hero-meta">
+          <span>Пунти́ро</span>
+          <span>Точное место · Ясная последовательность</span>
+        </div>
+        <svg class="hero-mark" aria-hidden="true"><use href="#p-sequence"/></svg>
+      </article>
+
+      <article class="panel signal span-4 hero">
+        <div class="eyebrow" data-no="02">Позиционирование</div>
+        <div>
+          <h2>Передача<br>без догадок.</h2>
+          <p style="font-size:18px">Puntiro работает в последней точке перед отгрузкой: когда товар уже собран, а реальные короба нужно быстро посчитать и обозначить.</p>
+        </div>
+        <div class="sequence" aria-label="1 из 5">
+          <i class="active"></i><i></i><i></i><i></i><i></i>
+          <span class="mono" style="margin-left:10px;font-size:12px;font-weight:700">01 / 05</span>
+        </div>
+      </article>
+
+      <article class="panel white span-12">
+        <div class="eyebrow" data-no="03">Логотипные территории</div>
+        <h2>Одна система. Три угла зрения.</h2>
+        <p class="muted">Рекомендуемое направление лучше всего переживает маленький размер, монохромную термопечать и ежедневное использование в интерфейсе.</p>
+        <div class="concepts">
+          <div class="concept recommended">
+            <div class="concept-top"><span class="concept-label">P‑Sequence</span><span class="badge">Рекомендуем</span></div>
+            <div class="concept-visual">
+              <svg style="width:116px;color:var(--paper)" aria-label="P-Sequence"><use href="#p-sequence"/></svg>
+            </div>
+            <small>Буква P собрана из регистрационной стойки, шести модулей и финальной точки. Смысл: место → последовательность → завершение.</small>
+          </div>
+          <div class="concept">
+            <div class="concept-top"><span class="concept-label">1/N Rail</span></div>
+            <div class="concept-visual">
+              <svg class="rail-logo" viewBox="0 0 180 80" aria-label="1/N Rail">
+                <path d="M18 20v40M54 20v40M90 20v40M126 20v40M162 20v40M18 40h144" fill="none" stroke="currentColor" stroke-width="5"/>
+                <rect x="10" y="12" width="16" height="16" fill="var(--signal)"/>
+              </svg>
+            </div>
+            <small>Сильная метафора счётчика, но слабее как самостоятельный знак и менее узнаваема на маленьком размере.</small>
+          </div>
+          <div class="concept">
+            <div class="concept-top"><span class="concept-label">Label Cut</span></div>
+            <div class="concept-visual"><div class="label-cut"></div></div>
+            <small>Прямее говорит об этикетке, но слишком буквально привязывает продукт к одному носителю.</small>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel grid-bg span-7 tall">
+        <div class="eyebrow" data-no="04">Конструкция</div>
+        <div class="construction">
+          <div class="construction-stage">
+            <svg class="mark" aria-label="Конструкция P-Sequence"><use href="#p-sequence"/></svg>
+          </div>
+          <div class="rules">
+            <div class="rule"><b>8 × 8</b><span>Модульная сетка связывает знак с сеткой этикетки и интерфейса.</span></div>
+            <div class="rule"><b>1 / N</b><span>Шесть элементов читаются как упорядоченные места; точка фиксирует текущий шаг.</span></div>
+            <div class="rule"><b>16 px</b><span>Минимум для цифрового знака. Ниже используем упрощённую монохромную форму.</span></div>
+            <div class="rule"><b>12 mm</b><span>Минимальная высота на печатных носителях и термоэтикетках.</span></div>
+            <div class="rule"><b>1×</b><span>Защитное поле равно ширине вертикальной стойки вокруг всего знака.</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel span-5 tall">
+        <div class="eyebrow" data-no="05">Варианты</div>
+        <h2>Один знак.<br>Любая среда.</h2>
+        <div class="variant-grid">
+          <div class="variant">
+            <div class="logo-lockup"><svg class="mark"><use href="#p-sequence"/></svg><div class="wordmark">Puntiro<span class="i-dot"></span></div></div>
+          </div>
+          <div class="variant dark">
+            <div class="logo-lockup"><svg class="mark"><use href="#p-sequence"/></svg><div class="wordmark">Puntiro<span class="i-dot"></span></div></div>
+          </div>
+          <div class="variant orange">
+            <svg style="width:70px"><use href="#p-sequence"/></svg>
+          </div>
+          <div class="variant" style="background:#fff;color:#000">
+            <svg style="width:70px;--signal:#000"><use href="#p-sequence"/></svg>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:20px">Полноцветный знак использует сигнальную точку. В термопечати все элементы становятся чёрными — смысл сохраняется без цвета.</p>
+      </article>
+
+      <article class="panel span-5">
+        <div class="eyebrow" data-no="06">Цвет</div>
+        <h2>Сигнал, а не украшение.</h2>
+        <p class="muted">Оранжевый отмечает текущее действие, выбранное место и статус, требующий внимания. Он не заполняет интерфейс фоном без причины.</p>
+        <div class="swatches">
+          <div class="swatch ink"><b>Register Ink</b><span>#171914<br>23 / 25 / 20</span></div>
+          <div class="swatch signal"><b>Handoff Orange</b><span>#FF5A1F<br>255 / 90 / 31</span></div>
+          <div class="swatch paper"><b>Label Paper</b><span>#F2F0E8<br>242 / 240 / 232</span></div>
+          <div class="swatch steel"><b>Warehouse Steel</b><span>#8B9189<br>139 / 145 / 137</span></div>
+        </div>
+      </article>
+
+      <article class="panel white span-7">
+        <div class="eyebrow" data-no="07">Типографика</div>
+        <div class="type-sample">
+          <div class="type-display">48271<br><span style="color:var(--signal)">1 / 5</span></div>
+          <div class="type-row"><b>Onest</b><span>Display · UI · Cyrillic<br>600 / 700 / 760</span></div>
+          <div class="type-row"><b class="mono">IBM Plex Mono</b><span>Codes · Dates · Counters<br>500 / 600 / 700</span></div>
+          <div class="type-row"><b>Цифры крупнее описаний</b><span>Shipment number is the hero</span></div>
+        </div>
+      </article>
+
+      <article class="panel span-6 tall">
+        <div class="eyebrow" data-no="08">Термоэтикетка</div>
+        <h2>Работает без цвета.</h2>
+        <p class="muted">Крупный номер документа и счётчик мест читаются первыми. Штрихкод остаётся самостоятельной технической зоной.</p>
+        <div class="label-wrap">
+          <div class="thermal-label">
+            <div class="label-head">
+              <div class="logo-lockup"><svg class="mark" style="--signal:#000"><use href="#p-sequence"/></svg><div class="wordmark">Puntiro<span class="i-dot"></span></div></div>
+              <span class="label-date">07.08.2026</span>
+            </div>
+            <div class="shipment">
+              <div><small>ОТГРУЗКА №</small><div class="shipment-no">48271</div></div>
+              <div class="place"><span>МЕСТО</span><b>1 / 5</b></div>
+            </div>
+            <div class="barcode-area"><div class="barcode"></div><div class="barcode-id">PT-48271-01<br>CODE 128</div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel dark span-6 tall">
+        <div class="eyebrow" data-no="09">Графический язык</div>
+        <h2>Порядок виден<br>до прочтения.</h2>
+        <p class="muted">Модули всегда идут по одной оси. Акцент показывает текущую точку, но не маскируется под штрихкод и не используется как декор.</p>
+        <div style="margin-top:72px;display:grid;gap:28px">
+          <div class="sequence" style="gap:14px"><i class="active" style="width:34px;height:34px"></i><i style="width:34px;height:34px"></i><i style="width:34px;height:34px"></i><i style="width:34px;height:34px"></i><i style="width:34px;height:34px"></i></div>
+          <div class="mono" style="font-size:12px;color:#969c92">PLACE 01 ───── OF 05</div>
+          <svg viewBox="0 0 560 90" style="width:100%;color:var(--paper)">
+            <path d="M12 46h90m16 0h90m16 0h90m16 0h90m16 0h112" stroke="currentColor" stroke-width="2" opacity=".3"/>
+            <rect x="12" y="29" width="34" height="34" fill="var(--signal)"/>
+            <rect x="118" y="29" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+            <rect x="224" y="29" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+            <rect x="330" y="29" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+            <rect x="436" y="29" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+          </svg>
+        </div>
+      </article>
+
+      <article class="panel white span-7 tall">
+        <div class="eyebrow" data-no="10">Киоск · направление</div>
+        <h2>Крупно. Спокойно. Без скролла.</h2>
+        <div class="kiosk">
+          <div class="kiosk-head">
+            <div class="logo-lockup"><svg class="mark"><use href="#p-sequence"/></svg><div class="wordmark">Puntiro<span class="i-dot"></span></div></div>
+            <div class="kiosk-status"><i></i>ПРИНТЕР ГОТОВ</div>
+          </div>
+          <div class="task-grid">
+            <div class="task-card featured"><small>СЕГОДНЯ · 14:30</small><b>48271</b><footer><span>ООО «Север»</span><span>Открыть →</span></footer></div>
+            <div class="task-card"><small>СЕГОДНЯ · 16:00</small><b>48272</b><footer><span>ТК «Парус»</span><span>Открыть →</span></footer></div>
+            <div class="task-card"><small>ЗАВТРА · 09:00</small><b>48273</b><footer><span>АО «Вектор»</span><span>Открыть →</span></footer></div>
+            <div class="task-card"><small>ЗАВТРА · 10:30</small><b>48274</b><footer><span>ООО «Линия»</span><span>Открыть →</span></footer></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel signal span-5 tall">
+        <div class="eyebrow" data-no="11">Cloud Admin · направление</div>
+        <h2>Один язык<br>для двух сред.</h2>
+        <p>Админка плотнее киоска, но наследует ту же типографическую иерархию, тонкие регистрационные линии и сигнальную точку.</p>
+        <div class="admin">
+          <div class="admin-head">
+            <div class="logo-lockup"><svg class="mark"><use href="#p-sequence"/></svg><div class="wordmark">Puntiro<span class="i-dot"></span></div></div>
+            <span class="mono" style="font-size:10px">СКЛАД №1</span>
+          </div>
+          <div class="admin-body">
+            <div class="admin-kpis"><div class="kpi"><span>Новые</span><b>12</b></div><div class="kpi"><span>Напечатано</span><b>38</b></div><div class="kpi"><span>Внимание</span><b style="color:var(--signal)">2</b></div></div>
+            <div class="admin-line"></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel dark span-7">
+        <div class="eyebrow" data-no="12">UI foundations</div>
+        <h2>Палец — базовая единица.</h2>
+        <p class="muted">Базовый киоск: 1280 × 800, landscape. Контент укладывается в один экран; адаптация идёт вверх, а не через уменьшение целей касания.</p>
+        <div class="tokens">
+          <div class="token"><span class="token-name">space/grid</span><b>8 px</b><span class="token-value">8 · 16 · 24 · 32 · 48</span></div>
+          <div class="token"><span class="token-name">touch/primary</span><b>64–72 px</b><div class="token-demo"><div class="touch-demo">ПЕЧАТАТЬ</div></div></div>
+          <div class="token"><span class="token-name">radius</span><b>4 / 12 px</b><span class="token-value">labels / controls</span></div>
+          <div class="token"><span class="token-name">border</span><b>2 px</b><span class="token-value">selected / focus</span></div>
+          <div class="token"><span class="token-name">motion</span><b>120–180 ms</b><span class="token-value">state confirmation only</span></div>
+          <div class="token"><span class="token-name">page/scroll</span><b>none</b><span class="token-value">at 1280 × 800</span></div>
+        </div>
+      </article>
+
+      <article class="panel span-5">
+        <div class="eyebrow" data-no="13">Voice</div>
+        <h2>Коротко и по делу.</h2>
+        <p class="muted">Puntiro сообщает факт, следующее действие и способ восстановления. Без обвинений оператора и без технического шума.</p>
+        <ol class="voice-list">
+          <li data-n="01">Введите количество мест</li>
+          <li data-n="02">Будет напечатано 5 этикеток</li>
+          <li data-n="03">Принтер не ответил. Проверьте подключение</li>
+          <li data-n="04">Результат печати неизвестен</li>
+          <li data-n="05">Создать новый комплект на 4 места</li>
+        </ol>
+      </article>
+
+      <article class="panel white span-5">
+        <div class="eyebrow" data-no="14">Ограничения</div>
+        <h2>Знак держит строй.</h2>
+        <div class="donts">
+          <div class="dont stretch"><svg class="mark"><use href="#p-sequence"/></svg><small>Не растягивать</small></div>
+          <div class="dont rotate"><svg class="mark"><use href="#p-sequence"/></svg><small>Не вращать</small></div>
+          <div class="dont effect"><svg class="mark"><use href="#p-sequence"/></svg><small>Не добавлять эффекты</small></div>
+        </div>
+      </article>
+
+      <article class="panel dark span-7 approval">
+        <div>
+          <div class="eyebrow" data-no="15">Утверждённая основа</div>
+          <h2>Зафиксировано для продукта.</h2>
+          <p class="muted">Эти пять решений образуют каноническую основу для детальной отрисовки экранов киоска и облачной админки.</p>
+        </div>
+        <div class="checklist">
+          <div class="check"><i></i><b>Название Puntiro</b><span>approved name</span></div>
+          <div class="check"><i></i><b>Знак P‑Sequence</b><span>logo direction</span></div>
+          <div class="check"><i></i><b>Графит + тёплая бумага + оранжевый</b><span>palette</span></div>
+          <div class="check"><i></i><b>Onest + IBM Plex Mono</b><span>type</span></div>
+          <div class="check"><i></i><b>8 px grid + 64 px touch</b><span>ui foundation</span></div>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footnote">
+      <span>Puntiro Brandbook · Approved 07.08.2026</span>
+      <span>Codex × Open Design · Editable HTML / SVG</span>
+    </footer>
+  </main>
+</body>
+</html>
