@@ -1,4 +1,5 @@
 import { Controls, Primary, Stories, Title } from '@storybook/addon-docs/blocks';
+import { usePuntiro } from '@puntiro/ui';
 import { createElement, type ComponentType } from 'react';
 import { useGlobals } from 'storybook/preview-api';
 import { DocsSection } from './DocsSection';
@@ -89,8 +90,7 @@ function ManualGateStatus({ entries, locale }: { entries: readonly MaturityManif
 }
 
 export function MaturityOverview() {
-  const [globals] = useGlobals();
-  const locale = globals.locale === 'en' ? 'en' : 'ru';
+  const { locale } = usePuntiro();
   const copy = reviewCopy[locale];
   const summary = summarizeMaturity(maturityManifest);
   const levelSummary = (Object.entries(summary.levelCounts) as [keyof typeof summary.levelCounts, number][])

@@ -28,7 +28,9 @@ Manager color roles:
 - manager brand mark: dedicated on-dark P-Sequence variant with Label Paper
   `#F2F0E8` ink and the unchanged Handoff Orange signal;
 - component preview canvas: light `#FFFDF6` / `#F2F0E8` surfaces;
-- Docs theme: retain its independent light palette.
+- Docs theme: retain its independent light palette;
+- standalone MDX Docs: render inside `PuntiroProvider` and follow the same
+  `locale` and `interactionMode` toolbar globals as stories.
 
 All normal manager text must meet at least WCAG AA `4.5:1`. UI boundaries and
 focus indicators must meet at least `3:1` against adjacent surfaces.
@@ -76,6 +78,10 @@ unchanged because the preview canvas is not being redesigned.
 The rendered manager brand image must also keep at least 90% of its fully
 opaque pixels at `3:1` or better against the resolved manager background. The
 original dark-ink mark remains the light-surface asset.
+
+A standalone Docs browser contract must open the Start article, prove that its
+Puntiro context is present, and switch RU/Touch to EN/Standard through the
+manager toolbar without reloading the document.
 
 ## Verification
 

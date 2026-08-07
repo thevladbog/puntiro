@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react-vite';
 import { PuntiroProvider } from '@puntiro/ui';
 import type { InteractionMode, Locale } from '@puntiro/ui';
+import { PuntiroDocsContainer } from './PuntiroDocsContainer';
 import { docsTheme } from './theme';
 
 type PuntiroStoryParameters = {
@@ -39,6 +40,7 @@ const preview = {
       test: 'error'
     },
     docs: {
+      container: PuntiroDocsContainer,
       theme: docsTheme
     }
   },
