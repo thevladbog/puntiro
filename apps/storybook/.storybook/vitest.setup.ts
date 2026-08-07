@@ -1,4 +1,4 @@
 import { setProjectAnnotations } from 'storybook/preview-api';
-import preview from './preview';
+import { getProjectAnnotations } from 'virtual:/@storybook/builder-vite/project-annotations.js';
 
-setProjectAnnotations(preview);
+setProjectAnnotations(getProjectAnnotations());

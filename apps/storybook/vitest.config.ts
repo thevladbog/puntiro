@@ -1,24 +1,18 @@
-import { defineConfig } from 'vitest/config';
+import { defineProject } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 
-export default defineConfig({
+export default defineProject({
+  plugins: [storybookTest({ configDir: 'apps/storybook/.storybook' })],
   test: {
-    projects: [
-      {
-        extends: true,
-        plugins: [storybookTest({ configDir: 'apps/storybook/.storybook' })],
-        test: {
-          name: 'storybook',
-          setupFiles: ['./.storybook/vitest.setup.ts'],
-          browser: {
-            enabled: true,
-            headless: true,
-            provider: playwright({}),
-            instances: [{ browser: 'chromium' }]
-          }
-        }
-      }
-    ]
+    name: 'storybook',
+    passWithNoTests: false,
+    setupFiles: '.storybook/vitest.setup.ts',
+    browser: {
+      enabled: true,
+      headless: true,
+      provider: playwright({}),
+      instances: [{ browser: 'chromium' }]
+    }
   }
 });

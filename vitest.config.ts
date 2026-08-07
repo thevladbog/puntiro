@@ -10,7 +10,8 @@ export default defineConfig({
           environment: 'node',
           include: ['packages/**/*.test.{ts,tsx}', 'apps/storybook/src/**/*.test.{ts,tsx}']
         }
-      })
+      }),
+      'apps/storybook/vitest.config.ts'
     ]
   }
 });

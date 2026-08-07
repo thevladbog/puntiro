@@ -1,10 +1,10 @@
 .puntiro-docs {
-  color: var(--puntiro-register-ink);
-  font-family: var(--puntiro-font-sans);
+  color: var(--puntiro-semantic-color-text-primary);
+  font-family: var(--puntiro-semantic-font-body);
 }
 
 .puntiro-docs__header {
-  border-bottom: 1px solid var(--puntiro-registration-line);
+  border-bottom: 1px solid var(--puntiro-semantic-color-border-default);
   margin-bottom: 32px;
   padding: 8px 0 32px;
 }
@@ -17,15 +17,15 @@
 }
 
 .puntiro-docs__section {
-  border-top: 1px solid var(--puntiro-registration-line);
+  border-top: 1px solid var(--puntiro-semantic-color-border-default);
   margin-top: 40px;
   padding-top: 24px;
 }
 
 .puntiro-docs__section h2,
 .puntiro-docs__section h3 {
-  color: var(--puntiro-register-ink);
-  font-family: var(--puntiro-font-sans);
+  color: var(--puntiro-semantic-color-text-primary);
+  font-family: var(--puntiro-semantic-font-body);
 }
 
 .puntiro-docs__section h2 {
@@ -54,17 +54,17 @@
 }
 
 .puntiro-docs__guidance > div {
-  background: var(--puntiro-label-paper);
-  border: 1px solid var(--puntiro-registration-line);
-  border-radius: var(--puntiro-radius-control);
+  background: var(--puntiro-semantic-color-surface-muted);
+  border: 1px solid var(--puntiro-semantic-color-border-default);
+  border-radius: var(--puntiro-semantic-radius-control);
   padding: 20px;
 }
 
 .puntiro-docs__maturity {
   border: 1px solid currentColor;
-  border-radius: var(--puntiro-radius-label);
+  border-radius: var(--puntiro-semantic-radius-label);
   display: inline-flex;
-  font-family: var(--puntiro-font-mono);
+  font-family: var(--puntiro-semantic-font-label);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -72,13 +72,13 @@
   text-transform: uppercase;
 }
 
-.puntiro-docs__maturity--draft { color: var(--puntiro-warehouse-steel); }
-.puntiro-docs__maturity--beta { color: var(--puntiro-status-warning); }
-.puntiro-docs__maturity--stable { color: var(--puntiro-status-ok); }
-.puntiro-docs__maturity--deprecated { color: var(--puntiro-status-danger); }
+.puntiro-docs__maturity--draft { color: var(--puntiro-semantic-color-disabled-background); }
+.puntiro-docs__maturity--beta { color: var(--puntiro-semantic-color-warning-default); }
+.puntiro-docs__maturity--stable { color: var(--puntiro-semantic-color-success-default); }
+.puntiro-docs__maturity--deprecated { color: var(--puntiro-semantic-color-danger-default); }
 
 @media (prefers-reduced-motion: no-preference) {
   .puntiro-docs__guidance > div {
-    transition: border-color var(--puntiro-motion-fast) ease;
+    transition: border-color var(--puntiro-semantic-motion-fast) ease;
   }
 }
