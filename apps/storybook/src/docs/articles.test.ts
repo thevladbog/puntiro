@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { enContent } from './content.en';
 import { ruContent } from './content.ru';
+import { START_ACTIONS, StartLayout } from './StartLayout';
+import { PuntiroProvider } from '@puntiro/ui';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 const articles = [
   ['Start.mdx', 'start'],
@@ -32,5 +36,42 @@ it('indexes every article as a minimal localized MDX document', () => {
     const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
     expect(source).toContain('<Meta title=');
     expect(source).toContain(`<LocalizedArticle id="${id}"`);
+  }
+});
+
+it('keeps Start navigation pointed at indexed Storybook documentation entries', () => {
+  const index = readFileSync(new URL('../../storybook-static/index.json', import.meta.url), 'utf8');
+  const html = renderToStaticMarkup(
+    createElement(PuntiroProvider, null, createElement(StartLayout)),
+  );
+
+  for (const action of START_ACTIONS) {
+    expect(index).toContain(`"${action.id}"`);
+    expect(action.href).toBe(`?path=/docs/${action.id}`);
+    expect(html).toContain(`href="${action.href}"`);
+  }
+  expect(html).toContain('target="_top"');
+});
+
+it('documents the localization and icon accessibility contracts in both locales', () => {
+  const ruText = Object.values(ruContent).flatMap((article) => [article.lead, ...article.sections.map((section) => section.body)]).join(' ');
+  const enText = Object.values(enContent).flatMap((article) => [article.lead, ...article.sections.map((section) => section.body)]).join(' ');
+
+  expect(ruText).toContain('Русский является языком по умолчанию');
+  expect(ruText).toContain('RU / EN');
+  expect(ruText).toContain('PuntiroIcon');
+  expect(ruText).toContain('доступное имя');
+  expect(ruText).toContain('Эмодзи');
+  expect(enText).toContain('Russian is the default language');
+  expect(enText).toContain('RU / EN');
+  expect(enText).toContain('PuntiroIcon');
+  expect(enText).toContain('accessible name');
+  expect(enText).toContain('Emoji');
+});
+
+it('keeps ordinary Russian prose localized', () => {
+  const source = readFileSync(new URL('./content.ru.ts', import.meta.url), 'utf8');
+  for (const term of ['landscape', 'Registration stem', 'controls', 'surfaces', 'Keyboard focus']) {
+    expect(source).not.toContain(term);
   }
 });

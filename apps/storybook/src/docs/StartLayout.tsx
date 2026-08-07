@@ -2,9 +2,14 @@ import { usePuntiro } from '@puntiro/ui';
 import './start.css';
 
 const labels = {
-  ru: { foundations: 'Основы', components: 'Компоненты', map: 'Карта системы', brand: 'Бренд и токены', brandCopy: 'Утвержденные значения и роли.', behavior: 'Поведение', behaviorCopy: 'Доступные interaction contracts.', patterns: 'Patterns', patternsCopy: 'Доменные сборки без I/O.', rules: 'Правила', rulesCopy: 'Композиция, контент и доступность.', preview: 'Live preview', previewCopy: 'Компоненты появятся здесь после их реализации.' },
-  en: { foundations: 'Foundations', components: 'Components', map: 'System map', brand: 'Brand and tokens', brandCopy: 'Approved values and roles.', behavior: 'Behavior', behaviorCopy: 'Accessible interaction contracts.', patterns: 'Patterns', patternsCopy: 'Domain assemblies without I/O.', rules: 'Rules', rulesCopy: 'Composition, content, and accessibility.', preview: 'Live preview', previewCopy: 'Components will appear here after implementation.' },
+  ru: { brandAction: 'Основы: бренд', tokensAction: 'Основы: токены', map: 'Карта системы', brand: 'Бренд и токены', brandCopy: 'Утвержденные значения и роли.', behavior: 'Поведение', behaviorCopy: 'Доступные контракты взаимодействия.', patterns: 'Паттерны', patternsCopy: 'Доменные сборки без ввода-вывода.', rules: 'Правила', rulesCopy: 'Композиция, контент и доступность.', preview: 'Предпросмотр', previewCopy: 'Компоненты появятся здесь после их реализации.' },
+  en: { brandAction: 'Foundations: Brand', tokensAction: 'Foundations: Tokens', map: 'System map', brand: 'Brand and tokens', brandCopy: 'Approved values and roles.', behavior: 'Behavior', behaviorCopy: 'Accessible interaction contracts.', patterns: 'Patterns', patternsCopy: 'Domain assemblies without I/O.', rules: 'Rules', rulesCopy: 'Composition, content, and accessibility.', preview: 'Live preview', previewCopy: 'Components will appear here after implementation.' },
 } as const;
+
+export const START_ACTIONS = [
+  { id: 'foundations-brand--docs', href: '?path=/docs/foundations-brand--docs', label: 'brandAction' },
+  { id: 'foundations-tokens--docs', href: '?path=/docs/foundations-tokens--docs', label: 'tokensAction' },
+] as const;
 
 export function StartLayout() {
   const { locale } = usePuntiro();
@@ -12,7 +17,7 @@ export function StartLayout() {
 
   return <>
     <nav className="puntiro-start__actions" aria-label={copy.map}>
-      <a href="#foundations">{copy.foundations}</a><a href="#components">{copy.components}</a>
+      {START_ACTIONS.map((action) => <a key={action.id} href={action.href} target="_top">{copy[action.label]}</a>)}
     </nav>
     <section className="puntiro-start__map" aria-labelledby="puntiro-system-map">
       <h2 id="puntiro-system-map">{copy.map}</h2>

@@ -8,7 +8,7 @@ export const tokenGalleryGroups = {
   color: generatedTokens.semantic.color,
   typography: generatedTokens.semantic.font,
   spacing: generatedTokens.reference.space,
-  sizing: generatedTokens.semantic.size,
+  sizing: generatedTokens.reference.size,
   radius: generatedTokens.semantic.radius,
   motion: generatedTokens.semantic.motion,
 } as const satisfies Record<string, TokenTree>;
@@ -19,7 +19,7 @@ const tokenGalleryPaths: Record<TokenGalleryGroup, readonly string[]> = {
   color: ['semantic', 'color'],
   typography: ['semantic', 'font'],
   spacing: ['reference', 'space'],
-  sizing: ['semantic', 'size'],
+  sizing: ['reference', 'size'],
   radius: ['semantic', 'radius'],
   motion: ['semantic', 'motion'],
 };

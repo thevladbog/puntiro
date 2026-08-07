@@ -18,3 +18,12 @@ it('exposes only the documented token group union', () => {
     'color', 'typography', 'spacing', 'sizing', 'radius', 'motion',
   ]);
 });
+
+it('includes the generated comfortable touch size in the sizing gallery', () => {
+  const html = renderToStaticMarkup(
+    <PuntiroProvider><TokenGallery group="sizing" /></PuntiroProvider>,
+  );
+
+  expect(html).toContain('reference.size.touch.comfortable');
+  expect(html).toContain('72px');
+});
