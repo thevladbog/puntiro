@@ -1,0 +1,12 @@
+.root {
+  display: grid;
+  gap: var(--puntiro-semantic-space-comfortable);
+  inline-size: min(100%, 48rem);
+  min-inline-size: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--puntiro-semantic-space-compact);
+}

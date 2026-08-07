@@ -1,0 +1,30 @@
+.root {
+  inline-size: min(100%, 48rem);
+  min-inline-size: 0;
+}
+
+.layout {
+  align-items: start;
+  display: grid;
+  gap: var(--puntiro-semantic-space-comfortable);
+  justify-items: start;
+  min-inline-size: 0;
+}
+
+.copy {
+  min-inline-size: 0;
+}
+
+.copy h2 {
+  font: 700 clamp(1.5rem, 3vw, 2rem)/1.15 var(--puntiro-semantic-font-body), sans-serif;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.copy p {
+  color: var(--puntiro-semantic-color-text-secondary);
+  font: var(--puntiro-semantic-typography-kiosk-body);
+  margin: var(--puntiro-semantic-space-compact) 0 0;
+  max-inline-size: 42rem;
+  overflow-wrap: anywhere;
+}

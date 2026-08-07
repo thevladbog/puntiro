@@ -1,0 +1,16 @@
+.root {
+  inline-size: min(100%, 48rem);
+  min-inline-size: 0;
+}
+
+.layout {
+  align-items: center;
+  display: flex;
+  gap: var(--puntiro-semantic-space-compact);
+  min-inline-size: 0;
+}
+
+.layout span {
+  font: 700 1.125rem/1.4 var(--puntiro-semantic-font-body), sans-serif;
+  overflow-wrap: anywhere;
+}
