@@ -1,9 +1,13 @@
 import { expect, test, type Locator } from '@playwright/test';
-import { contrastRatio, parseCssColor, resolveBackground } from './contrast';
+import { contrastRatio, parseCssColor, resolveBackground, type Rgba } from './contrast';
 
-const selectedSidebarBackground = 'rgb(194, 51, 0)';
+type TextColors = {
+  foreground: string;
+  background: Rgba;
+  backgrounds: string[];
+};
 
-async function expectTextContrast(locator: Locator, minimum = 4.5) {
+async function readTextColors(locator: Locator): Promise<TextColors> {
   const colors = await locator.evaluate((element) => {
     const foreground = getComputedStyle(element).color;
     let current: Element | null = element;
@@ -21,17 +25,20 @@ async function expectTextContrast(locator: Locator, minimum = 4.5) {
   if (!foreground) throw new Error(`Could not parse foreground color: ${colors.foreground}`);
   const background = resolveBackground(colors.backgrounds);
   if (!background) throw new Error(`Could not resolve an opaque background from: ${colors.backgrounds.join(' -> ')}`);
-  const ratio = contrastRatio(foreground, background);
 
-  expect(ratio, `${colors.foreground} on ${colors.backgrounds.join(' -> ')}`).toBeGreaterThanOrEqual(minimum);
+  return { foreground: colors.foreground, background, backgrounds: colors.backgrounds };
 }
 
-async function sidebarItemBackground(locator: Locator): Promise<string> {
-  return locator.evaluate((element) => {
-    const sidebarItem = element.closest('.sidebar-item');
-    if (!sidebarItem) throw new Error('Expected story link to have a .sidebar-item ancestor');
-    return getComputedStyle(sidebarItem).backgroundColor;
-  });
+function formatRgb(color: Rgba): string {
+  return `rgb(${color.red}, ${color.green}, ${color.blue})`;
+}
+
+function expectTextContrast(colors: TextColors, minimum = 4.5) {
+  const foreground = parseCssColor(colors.foreground);
+  if (!foreground) throw new Error(`Could not parse foreground color: ${colors.foreground}`);
+  const ratio = contrastRatio(foreground, colors.background);
+
+  expect(ratio, `${colors.foreground} on ${colors.backgrounds.join(' -> ')}`).toBeGreaterThanOrEqual(minimum);
 }
 
 test('manager chrome keeps sidebar, toolbar, search and controls readable', async ({ page }) => {
@@ -39,14 +46,16 @@ test('manager chrome keeps sidebar, toolbar, search and controls readable', asyn
 
   const selectedStory = page.locator('a[href="/?path=/story/components-button--default"]');
   const unselectedStory = page.locator('a[href="/?path=/story/components-button--primary"]');
-  const selectedBackground = await sidebarItemBackground(selectedStory);
-  const unselectedBackground = await sidebarItemBackground(unselectedStory);
+  const selectedColors = await readTextColors(selectedStory);
+  const unselectedColors = await readTextColors(unselectedStory);
 
-  expect(selectedBackground).toBe(selectedSidebarBackground);
-  expect(unselectedBackground).not.toBe(selectedSidebarBackground);
-  await expectTextContrast(selectedStory);
-  await expectTextContrast(unselectedStory);
-  await expectTextContrast(page.getByPlaceholder('Find components'));
-  await expectTextContrast(page.getByRole('tab', { name: 'Controls' }));
-  await expectTextContrast(page.getByPlaceholder('Edit JSON string...'));
+  expect(selectedColors.foreground).toBe('rgb(255, 255, 255)');
+  expect(formatRgb(selectedColors.background)).toBe('rgb(194, 51, 0)');
+  expect(unselectedColors.foreground).toBe('rgb(242, 240, 232)');
+  expect(formatRgb(unselectedColors.background)).toBe('rgb(23, 25, 20)');
+  expectTextContrast(selectedColors);
+  expectTextContrast(unselectedColors);
+  expectTextContrast(await readTextColors(page.getByPlaceholder('Find components')));
+  expectTextContrast(await readTextColors(page.getByRole('tab', { name: 'Controls' })));
+  expectTextContrast(await readTextColors(page.getByPlaceholder('Edit JSON string...')));
 });

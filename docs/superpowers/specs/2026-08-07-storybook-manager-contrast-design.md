@@ -22,13 +22,26 @@ Manager color roles:
 - manager base, sidebar, toolbar, and addon panel: dark;
 - primary manager text: `#F2F0E8` on `#171914` (`15.52:1`);
 - secondary manager text: `#C8C8BE` on `#171914` (`10.51:1`);
-- selected/accent text: `#171914` on `#FF5A1F` (`5.68:1`);
+- selected/accent roles: `#171914` on `#FF5A1F` (`5.68:1`) where the
+  supported theme role is used;
 - dark controls and inputs: `#292C26` with `#FFFDF6` text;
 - component preview canvas: light `#FFFDF6` / `#F2F0E8` surfaces;
 - Docs theme: retain its independent light palette.
 
 All normal manager text must meet at least WCAG AA `4.5:1`. UI boundaries and
 focus indicators must meet at least `3:1` against adjacent surfaces.
+
+### Approved Storybook-native selected-sidebar exception
+
+For the Storybook dark manager's selected sidebar story, accept the supported
+native rendering rather than overriding manager internals: Storybook derives
+`rgb(194, 51, 0)` from Puntiro `#FF5A1F` and renders light selected text
+(`rgb(255, 255, 255)`). This explicit selected-sidebar pair must remain at or
+above `4.5:1` in the rendered browser contract.
+
+Do not add manager-internal CSS to force the generic selected/accent role onto
+this state. The unselected sidebar state remains `rgb(242, 240, 232)` on
+`rgb(23, 25, 20)` and must also be asserted before contrast is measured.
 
 ## Implementation boundary
 
@@ -53,7 +66,8 @@ representative visible states when stable Storybook roles are available:
 - top/addon toolbar text;
 - a Controls field and its input text.
 
-The browser check must calculate computed foreground/background contrast rather
+The browser check must assert the explicit computed foreground/background pair
+for selected and unselected sidebar stories before calculating contrast, rather
 than rely only on a screenshot. Existing component visual baselines must remain
 unchanged because the preview canvas is not being redesigned.
 

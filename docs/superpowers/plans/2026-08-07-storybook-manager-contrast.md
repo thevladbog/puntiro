@@ -11,11 +11,25 @@
 ## Global Constraints
 
 - Manager normal text contrast is at least `4.5:1`; UI boundaries and focus indicators are at least `3:1`.
-- Manager primary text is `#F2F0E8` on `#171914`; muted text is `#C8C8BE`; selected text is `#171914` on `#FF5A1F`.
+- Manager primary text is `#F2F0E8` on `#171914`; muted text is `#C8C8BE`; supported selected/accent roles use `#171914` on `#FF5A1F`.
 - Manager controls use `#292C26` with `#FFFDF6` text.
 - Component preview and Docs remain light; existing component screenshot baselines must not change.
 - Use only Storybook's supported theming API; do not add CSS selectors targeting manager internals.
 - Do not change Puntiro tokens, components, public APIs, stories, product screens, or hardware behavior.
+
+## Approved Storybook-native selected-sidebar decision
+
+This decision supersedes the selected-sidebar expectation in the historical
+Task 1 snippets below. Storybook 10.5.3's supported dark-manager rendering
+derives the selected sidebar background `rgb(194, 51, 0)` from Puntiro
+`#FF5A1F` and applies light text `rgb(255, 255, 255)`. Accept that native
+state when its rendered contrast is at least `4.5:1`; do not add
+manager-internal CSS to substitute a different selected color.
+
+The browser contract must assert this selected foreground/background pair and
+the unselected `rgb(242, 240, 232)` on `rgb(23, 25, 20)` pair before measuring
+contrast. This keeps the contract on stable rendered behavior rather than a
+`.sidebar-item` implementation detail.
 
 ---
 
