@@ -1,2 +1,7 @@
 .superpowers/
 .worktrees/
+node_modules/
+dist/
+storybook-static/
+playwright-report/
+test-results/

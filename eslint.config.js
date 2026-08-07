@@ -1,0 +1,20 @@
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  {
+    ignores: ['**/dist/**', '**/storybook-static/**', '**/playwright-report/**', '**/test-results/**']
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [tseslint.configs.recommended],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_'
+        }
+      ]
+    }
+  }
+);

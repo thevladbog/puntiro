@@ -55,7 +55,7 @@ The versions below were read from the npm registry on 2026-08-07 and must be rec
 | `react`, `react-dom` | `19.2.8` |
 | `@types/react` | `19.2.17` |
 | `@types/react-dom` | `19.2.3` |
-| `typescript` | `7.0.2` |
+| `typescript` | `6.0.3` |
 | `vite` | `8.1.5` |
 | `@vitejs/plugin-react` | `6.0.4` |
 | `storybook`, `@storybook/react-vite`, `@storybook/addon-docs`, `@storybook/addon-a11y`, `@storybook/addon-vitest` | `10.5.3` |
