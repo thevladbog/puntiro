@@ -118,7 +118,7 @@ export function TokenGallery({ group }: { group: TokenGalleryGroup }) {
         </tr></thead>
         <tbody>
           {tokens.map((token) => (
-            <tr key={token.name}>
+            <tr key={token.name} data-color-token-row={isColor ? token.name : undefined}>
               {isColor ? <td><ColorSwatch token={token} table /></td> : null}
               <th scope="row">{token.name}</th><td>{token.value}</td>
             </tr>

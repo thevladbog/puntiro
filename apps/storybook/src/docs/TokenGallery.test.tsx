@@ -65,6 +65,7 @@ it('adds a decorative swatch to every complete color-table row', () => {
   );
   const colorCount = collectLeafCount(generatedTokens.semantic.color);
 
+  expect(html.match(/data-color-token-row=/g)).toHaveLength(colorCount);
   expect(html.match(/data-color-table-swatch="true"/g)).toHaveLength(colorCount);
   expect(html.match(/aria-hidden="true"/g)?.length).toBeGreaterThanOrEqual(colorCount);
   expect(html).toContain('<th scope="col">Preview</th>');
