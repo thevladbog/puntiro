@@ -9,7 +9,7 @@
 - Admin shell typecheck/build: pass
 - Kiosk shell typecheck/build: pass
 - .NET solution plus protected-project builds with outputs and intermediates isolated in unique temporary artifacts roots on development host: pass
-- Effective imported MSBuild project graph, protected producer path, non-linked exact `TargetPath`, trusted BCL constructor identity, and friend-assembly metadata binding for those Release outputs: pass
+- Exact solution/effective build-consumed MSBuild project graph, project-scoped non-linked `TargetPath`, trusted BCL constructor identity, and friend-assembly metadata binding for those Release outputs: pass
 
 ## CI
 

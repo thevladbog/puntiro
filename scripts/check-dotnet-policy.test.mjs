@@ -111,10 +111,14 @@ function buildNormally(root, projectPath) {
 }
 
 function runPolicy(root, solutionPath, protectedProjects) {
-  return policyModule.runDotnetPolicy({
+  const solutionFile = 'Puntiro.slnx';
+  return writeFile(
+    path.join(root, solutionFile),
+    `<Solution><Project Path="${xmlAttribute(solutionPath)}" /></Solution>\n`,
+  ).then(() => policyModule.runDotnetPolicy({
     dotnet,
     repositoryRoot: root,
-    solutionPath,
+    solutionPath: solutionFile,
     protectedProjects,
     verifierProject: {
       projectPath: verifierProjectPath,
@@ -122,7 +126,7 @@ function runPolicy(root, solutionPath, protectedProjects) {
     },
     projectGraph: [{ projectPath: solutionPath, references: [] }],
     logger: {},
-  });
+  }));
 }
 
 before(async () => {
@@ -216,7 +220,7 @@ test('rejects build success when only stale normal bin and obj exist', async () 
   );
 });
 
-test('does not substitute an approved unprotected collision DLL for the protected output', async () => {
+test('does not discover an unrelated approved normal-bin DLL when the protected output is unapproved', async () => {
   const root = await createFixtureRoot('collision');
   const protectedProject = await writeProject(root, 'Protected', 'Protected', {
     assemblyInfo: `${approvedAssemblyInfo}[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unapproved.Tests")]\n`,
@@ -234,6 +238,35 @@ test('does not substitute an approved unprotected collision DLL for the protecte
     }]),
     /Unapproved\.Tests/,
   );
+});
+
+test('accepts an approved regular-file replacement at the authoritative isolated TargetPath', async () => {
+  const root = await createFixtureRoot('regular-replacement');
+  const collisionProject = await writeProject(root, 'Collision', 'Collision', {
+    properties: '<AssemblyName>Protected</AssemblyName>',
+  });
+  buildNormally(root, collisionProject);
+  const approvedDll = path.join(root, 'Collision/bin/Release/net10.0/Protected.dll');
+  await access(approvedDll);
+
+  const copyScript = path.join(root, 'Protected/replace-target-with-file.mjs');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected', {
+    assemblyInfo: `${approvedAssemblyInfo}[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unapproved.Tests")]\n`,
+    projectExtra: `<Target Name="ReplaceProtectedTargetWithRegularFile" AfterTargets="Build">
+    <Exec Command="&quot;${xmlAttribute(process.execPath)}&quot; &quot;${xmlAttribute(copyScript)}&quot; &quot;$(TargetPath)&quot; &quot;${xmlAttribute(approvedDll)}&quot;" />
+  </Target>`,
+    files: {
+      'replace-target-with-file.mjs': `import { copyFileSync } from 'node:fs';
+
+copyFileSync(process.argv[3], process.argv[2]);
+`,
+    },
+  });
+
+  await assert.doesNotReject(runPolicy(root, protectedProject, [{
+    projectPath: protectedProject,
+    assemblyName: 'Protected',
+  }]));
 });
 
 test('rejects an isolated TargetPath symlink to an approved stale normal-bin DLL', async t => {
@@ -319,5 +352,136 @@ test('rejects a ProjectReference injected through inherited Directory.Build.targ
       projectGraph: [{ projectPath: protectedProject, references: [] }],
     }),
     /unexpected effective ProjectReference.*Forbidden\/Forbidden\.csproj/,
+  );
+});
+
+test('rejects a reference injected into the items consumed after PrepareProjectReferences', async () => {
+  const root = await createFixtureRoot('late-consumed-reference');
+  const forbiddenProject = await writeProject(root, 'Forbidden', 'Forbidden');
+  const forbiddenProjectPath = path.join(root, forbiddenProject);
+  const protectedProject = await writeProject(root, 'Protected', 'Protected');
+  await writeFile(path.join(root, 'Directory.Build.targets'), `<Project>
+  <Target Name="InjectConsumedReferenceAfterPreparation"
+          AfterTargets="PrepareProjectReferences"
+          Condition="'$(MSBuildProjectName)' == 'Protected'">
+    <ItemGroup>
+      <ProjectReferenceWithConfiguration Include="${xmlAttribute(forbiddenProjectPath)}"
+                                         BuildReference="true"
+                                         ReferenceOutputAssembly="true" />
+      <_MSBuildProjectReferenceExistent Include="${xmlAttribute(forbiddenProjectPath)}"
+                                        BuildReference="true"
+                                        ReferenceOutputAssembly="true" />
+    </ItemGroup>
+  </Target>
+</Project>
+`);
+
+  await assert.rejects(
+    policyModule.validateEffectiveProjectGraph({
+      dotnet,
+      repositoryRoot: root,
+      projectGraph: [{ projectPath: protectedProject, references: [] }],
+    }),
+    /unexpected build-consumed ProjectReference.*Forbidden\/Forbidden\.csproj/,
+  );
+});
+
+test('rejects removal of a required reference immediately before ResolveProjectReferences', async () => {
+  const root = await createFixtureRoot('late-removed-reference');
+  const requiredProject = await writeProject(root, 'Required', 'Required');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected', {
+    projectExtra: `<ItemGroup>
+    <ProjectReference Include="../${requiredProject}" />
+  </ItemGroup>`,
+  });
+  await writeFile(path.join(root, 'Directory.Build.targets'), `<Project>
+  <Target Name="RemoveConsumedReferenceBeforeResolution"
+          BeforeTargets="ResolveProjectReferences"
+          Condition="'$(MSBuildProjectName)' == 'Protected'">
+    <ItemGroup>
+      <ProjectReferenceWithConfiguration Remove="../${requiredProject}" />
+      <_MSBuildProjectReferenceExistent Remove="../${requiredProject}" />
+    </ItemGroup>
+  </Target>
+</Project>
+`);
+
+  await assert.rejects(
+    policyModule.validateEffectiveProjectGraph({
+      dotnet,
+      repositoryRoot: root,
+      projectGraph: [
+        { projectPath: requiredProject, references: [] },
+        { projectPath: protectedProject, references: [requiredProject] },
+      ],
+    }),
+    /missing build-consumed ProjectReference.*Required\/Required\.csproj/,
+  );
+});
+
+test('rejects a consumed late reference hidden from item state after resolution', async () => {
+  const root = await createFixtureRoot('post-resolve-hidden-reference');
+  const forbiddenProject = await writeProject(root, 'Forbidden', 'Forbidden');
+  const forbiddenProjectPath = path.join(root, forbiddenProject);
+  const protectedProject = await writeProject(root, 'Protected', 'Protected');
+  await writeFile(path.join(root, 'Directory.Build.targets'), `<Project>
+  <Target Name="InjectConsumedReferenceAfterPreparation"
+          AfterTargets="PrepareProjectReferences"
+          Condition="'$(MSBuildProjectName)' == 'Protected'">
+    <ItemGroup>
+      <ProjectReferenceWithConfiguration Include="${xmlAttribute(forbiddenProjectPath)}"
+                                         BuildReference="true"
+                                         ReferenceOutputAssembly="true" />
+      <_MSBuildProjectReferenceExistent Include="${xmlAttribute(forbiddenProjectPath)}"
+                                        BuildReference="true"
+                                        ReferenceOutputAssembly="true" />
+    </ItemGroup>
+  </Target>
+  <Target Name="HideConsumedReferenceAfterResolution"
+          AfterTargets="ResolveProjectReferences"
+          Condition="'$(MSBuildProjectName)' == 'Protected'">
+    <ItemGroup>
+      <ProjectReferenceWithConfiguration Remove="${xmlAttribute(forbiddenProjectPath)}" />
+      <_MSBuildProjectReferenceExistent Remove="${xmlAttribute(forbiddenProjectPath)}" />
+    </ItemGroup>
+  </Target>
+</Project>
+`);
+
+  await assert.rejects(
+    policyModule.validateEffectiveProjectGraph({
+      dotnet,
+      repositoryRoot: root,
+      projectGraph: [{ projectPath: protectedProject, references: [] }],
+    }),
+    /unexpected resolved ProjectReference producer.*Forbidden\/Forbidden\.csproj/,
+  );
+});
+
+test('rejects solution projects outside the exact managed graph set', async () => {
+  const root = await createFixtureRoot('extra-solution-project');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected');
+  const extraProject = await writeProject(root, 'Extra', 'Extra');
+  const solutionPath = 'Puntiro.slnx';
+  await writeFile(path.join(root, solutionPath), `<Solution>
+  <Project Path="${protectedProject}" />
+  <Project Path="${extraProject}" />
+</Solution>
+`);
+
+  await assert.rejects(
+    policyModule.runDotnetPolicy({
+      dotnet,
+      repositoryRoot: root,
+      solutionPath,
+      protectedProjects: [{ projectPath: protectedProject, assemblyName: 'Protected' }],
+      verifierProject: {
+        projectPath: verifierProjectPath,
+        assemblyName: 'Puntiro.AssemblyPolicy',
+      },
+      projectGraph: [{ projectPath: protectedProject, references: [] }],
+      logger: {},
+    }),
+    /unexpected solution project.*Extra\/Extra\.csproj/,
   );
 });

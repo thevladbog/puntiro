@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -254,6 +254,105 @@ function transitiveReferences(projectPath, projectGraph) {
   return references;
 }
 
+function decodeXmlAttribute(value, solutionPath) {
+  return value.replaceAll(/&([^;\s]+);/g, (entity, encoded) => {
+    if (/^#\d+$/.test(encoded)) {
+      return String.fromCodePoint(Number.parseInt(encoded.slice(1), 10));
+    }
+    if (/^#x[\dA-Fa-f]+$/.test(encoded)) {
+      return String.fromCodePoint(Number.parseInt(encoded.slice(2), 16));
+    }
+    const named = { amp: '&', apos: "'", gt: '>', lt: '<', quot: '"' }[encoded];
+    if (named === undefined) {
+      throw new Error(
+        `${solutionPath}: unsupported XML entity ${entity} in solution project path ` +
+        `(see ${policyReference})`,
+      );
+    }
+    return named;
+  });
+}
+
+export async function validateSolutionProjectSet({
+  repositoryRoot = defaultRepositoryRoot,
+  solutionPath = 'Puntiro.slnx',
+  projectGraph = defaultProjectGraph,
+} = {}) {
+  const expectedGraph = validateProjectGraphDefinition(projectGraph, repositoryRoot);
+  const absoluteSolutionPath = path.resolve(repositoryRoot, solutionPath);
+  const solutionDirectory = path.dirname(absoluteSolutionPath);
+  const solution = await readFile(absoluteSolutionPath, 'utf8');
+  const withoutComments = solution.replaceAll(/<!--[\s\S]*?-->/g, '');
+  if (withoutComments.includes('<!--') || withoutComments.includes('-->')) {
+    throw new Error(`${solutionPath}: malformed XML comment (see ${policyReference})`);
+  }
+
+  const solutionProjects = [];
+  for (const tag of withoutComments.matchAll(/<Project\b[^>]*>/g)) {
+    const pathAttribute = tag[0].match(/\bPath\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+    if (!pathAttribute) {
+      throw new Error(`${solutionPath}: solution Project entry lacks Path (see ${policyReference})`);
+    }
+    const projectPath = decodeXmlAttribute(pathAttribute[1] ?? pathAttribute[2], solutionPath);
+    solutionProjects.push(comparablePath(path.resolve(solutionDirectory, projectPath)));
+  }
+
+  const solutionSet = new Set(solutionProjects);
+  if (solutionSet.size !== solutionProjects.length) {
+    throw new Error(`${solutionPath}: duplicate normalized solution project path (see ${policyReference})`);
+  }
+
+  const errors = [];
+  for (const projectPath of expectedGraph.keys()) {
+    if (!solutionSet.has(projectPath)) {
+      errors.push(
+        `${solutionPath}: missing solution project ` +
+        `${displayProjectPath(repositoryRoot, projectPath)} (see ${policyReference})`,
+      );
+    }
+  }
+  for (const projectPath of solutionSet) {
+    if (!expectedGraph.has(projectPath)) {
+      errors.push(
+        `${solutionPath}: unexpected solution project ` +
+        `${displayProjectPath(repositoryRoot, projectPath)} (see ${policyReference})`,
+      );
+    }
+  }
+  if (errors.length > 0) throw new Error(errors.join('\n'));
+}
+
+function compareReferenceMultiset({
+  projectPath,
+  repositoryRoot,
+  label,
+  actualReferences,
+  expectedReferences,
+  errors,
+}) {
+  const actualSet = new Set(actualReferences);
+  if (actualSet.size !== actualReferences.length) {
+    errors.push(`${projectPath}: duplicate ${label} (see ${policyReference})`);
+  }
+  const expectedSet = new Set(expectedReferences);
+  for (const reference of expectedReferences) {
+    if (!actualSet.has(reference)) {
+      errors.push(
+        `${projectPath}: missing ${label} ` +
+        `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+      );
+    }
+  }
+  for (const reference of actualSet) {
+    if (!expectedSet.has(reference)) {
+      errors.push(
+        `${projectPath}: unexpected ${label} ` +
+        `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+      );
+    }
+  }
+}
+
 export async function validateEffectiveProjectGraph({
   dotnet = process.env.PUNTIRO_DOTNET_BIN ?? 'dotnet',
   repositoryRoot = defaultRepositoryRoot,
@@ -296,9 +395,10 @@ export async function validateEffectiveProjectGraph({
           '-property:Configuration=Release',
           `-property:ArtifactsPath=${artifactsRoot}`,
           '-property:UseArtifactsOutput=true',
-          '-target:PrepareProjectReferences',
+          '-property:BuildProjectReferences=false',
+          '-target:ResolveProjectReferences',
           '-getProperty:MSBuildProjectFullPath,MSBuildToolsPath',
-          '-getItem:ProjectReference',
+          '-getItem:ProjectReference,_MSBuildProjectReferenceExistent,_ResolvedProjectReferencePaths',
         ],
       });
       const evaluated = parseEvaluatedProject(result.stdout, projectPath);
@@ -345,27 +445,55 @@ export async function validateEffectiveProjectGraph({
         }
         actualReferences.push(reference);
       }
-      const actualSet = new Set(actualReferences);
-      if (actualSet.size !== actualReferences.length) {
-        errors.push(`${projectPath}: duplicate effective ProjectReference (see ${policyReference})`);
-      }
-      const expectedSet = new Set(expectedReferences);
-      for (const reference of expectedReferences) {
-        if (!actualSet.has(reference)) {
+      compareReferenceMultiset({
+        projectPath,
+        repositoryRoot,
+        label: 'effective ProjectReference',
+        actualReferences,
+        expectedReferences,
+        errors,
+      });
+
+      const consumedReferences = [];
+      for (const item of evaluated.Items?._MSBuildProjectReferenceExistent ?? []) {
+        if (typeof item?.FullPath !== 'string' || !path.isAbsolute(item.FullPath)) {
           errors.push(
-            `${projectPath}: missing effective ProjectReference ` +
-            `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+            `${projectPath}: build-consumed ProjectReference lacks an absolute FullPath ` +
+            `(see ${policyReference})`,
           );
+          continue;
         }
+        consumedReferences.push(comparablePath(item.FullPath));
       }
-      for (const reference of actualSet) {
-        if (!expectedSet.has(reference)) {
+      compareReferenceMultiset({
+        projectPath,
+        repositoryRoot,
+        label: 'build-consumed ProjectReference',
+        actualReferences: consumedReferences,
+        expectedReferences: [...allowedTransitiveReferences],
+        errors,
+      });
+
+      const resolvedReferences = [];
+      for (const item of evaluated.Items?._ResolvedProjectReferencePaths ?? []) {
+        if (typeof item?.MSBuildSourceProjectFile !== 'string'
+          || !path.isAbsolute(item.MSBuildSourceProjectFile)) {
           errors.push(
-            `${projectPath}: unexpected effective ProjectReference ` +
-            `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+            `${projectPath}: resolved ProjectReference output lacks an absolute ` +
+            `MSBuildSourceProjectFile (see ${policyReference})`,
           );
+          continue;
         }
+        resolvedReferences.push(comparablePath(item.MSBuildSourceProjectFile));
       }
+      compareReferenceMultiset({
+        projectPath,
+        repositoryRoot,
+        label: 'resolved ProjectReference producer',
+        actualReferences: resolvedReferences,
+        expectedReferences: [...allowedTransitiveReferences],
+        errors,
+      });
     }
   } finally {
     await rm(temporaryRoot, { force: true, recursive: true });
@@ -680,6 +808,7 @@ export async function runDotnetPolicy({
   logger = console,
 } = {}) {
   validateProtectedProjects(protectedProjects, repositoryRoot);
+  await validateSolutionProjectSet({ repositoryRoot, solutionPath, projectGraph });
   await validateEffectiveProjectGraph({ dotnet, repositoryRoot, projectGraph, logger });
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-check-'));
 
