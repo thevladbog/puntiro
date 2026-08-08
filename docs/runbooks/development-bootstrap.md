@@ -16,8 +16,9 @@ node --version
 corepack pnpm --version
 dotnet --info
 corepack pnpm install --frozen-lockfile
+corepack pnpm dependencies:check
 corepack pnpm docs:check
 corepack pnpm check
 ```
 
-`docs:check` validates the repository documentation contract. `check` runs the existing design-system validation pipeline; it is automated evidence only and does not replace Windows or physical-hardware acceptance.
+`dependencies:check` enforces exact stable dependency and toolchain pins. `docs:check` validates the repository documentation contract. `check` runs the existing design-system validation pipeline; it is automated evidence only and does not replace Windows or physical-hardware acceptance.

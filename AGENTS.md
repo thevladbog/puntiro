@@ -13,6 +13,7 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 ## Required Commands
 
 - Bootstrap: `corepack pnpm install --frozen-lockfile`
+- Dependencies: `corepack pnpm dependencies:check`
 - Documentation: `corepack pnpm docs:check`
 - Existing UI pipeline: `corepack pnpm check`
 

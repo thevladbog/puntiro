@@ -11,6 +11,7 @@
   "scripts": {
     "build": "corepack pnpm run tokens:build && corepack pnpm --filter @puntiro/ui build && corepack pnpm run storybook:build",
     "check": "corepack pnpm run tokens:check && corepack pnpm run typecheck && corepack pnpm run lint && corepack pnpm run test && corepack pnpm run test:storybook && corepack pnpm run storybook:build && corepack pnpm run test:visual",
+    "dependencies:check": "node scripts/check-dependency-policy.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "typecheck": "corepack pnpm -r typecheck",
     "lint": "eslint .",
