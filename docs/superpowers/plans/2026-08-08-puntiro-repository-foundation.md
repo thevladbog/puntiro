@@ -1078,6 +1078,9 @@ test('foundation CI separates repository and Windows compilation evidence', asyn
   assert.match(workflow, /name: Windows compile/);
   assert.match(workflow, /node-version: 24\.19\.0/);
   assert.match(workflow, /dotnet-version: 10\.0\.302/);
+  assert.match(workflow, /uses: actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1/);
+  assert.match(workflow, /uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7\.0\.0/);
+  assert.match(workflow, /uses: actions\/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6\.0\.0/);
   assert.match(workflow, /corepack pnpm install --frozen-lockfile/);
   assert.doesNotMatch(workflow, /Windows acceptance/);
 });
@@ -1115,11 +1118,11 @@ jobs:
     name: Repository contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.19.0
-      - uses: actions/setup-dotnet@v5.0.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
       - run: corepack enable
@@ -1133,15 +1136,17 @@ jobs:
     name: Windows compile
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-dotnet@v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
       - run: dotnet restore Puntiro.slnx
       - run: dotnet build Puntiro.slnx --configuration Release --no-restore
 ```
 
-Before committing this workflow, security-review the exact action release tags `v4.2.2`, `v4.4.0`, and `v5.0.0`. If an official advisory rejects one, stop and amend the plan before changing the pin.
+Before committing this workflow, security-review the exact action releases `actions/checkout@v7.0.1`, `actions/setup-node@v7.0.0`, and `actions/setup-dotnet@v6.0.0`. GitHub secure-use guidance requires each `uses:` entry to reference the release's full commit SHA because it is the only immutable action reference. If an official advisory rejects a release or a newer stable safe release supersedes it, stop and amend the plan before changing the pin.
+
+Security revalidation on 2026-08-08 confirmed these current stable releases from the first-party release pages: [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1), [setup-node v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0), and [setup-dotnet v6.0.0](https://github.com/actions/setup-dotnet/releases/tag/v6.0.0). The immutable full-SHA requirement follows [GitHub secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
 
 Do not put secrets in the workflow. Do not run physical or Windows runtime acceptance in the Ubuntu job.
 
