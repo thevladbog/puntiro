@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Puntiro.Modules.Tenancy.Contracts;
 using Puntiro.Modules.Tenancy.Domain;
 
 namespace Puntiro.Modules.Tenancy.Persistence;
@@ -16,7 +17,11 @@ internal static class TenancyModelConfiguration
     private static void ConfigureOrganization(ModelBuilder modelBuilder)
     {
         var organization = modelBuilder.Entity<Organization>();
-        organization.ToTable("organizations");
+        organization.ToTable(
+            "organizations",
+            table => table.HasCheckConstraint(
+                "ck_organizations_status",
+                "status IN ('provisioning', 'active', 'suspended')"));
         organization.HasKey(item => item.Id).HasName("pk_organizations");
         organization.Property(item => item.Id).HasColumnName("id").ValueGeneratedNever();
         organization.Property(item => item.DisplayName)
@@ -54,7 +59,15 @@ internal static class TenancyModelConfiguration
     private static void ConfigureMembership(ModelBuilder modelBuilder)
     {
         var membership = modelBuilder.Entity<Membership>();
-        membership.ToTable("memberships");
+        membership.ToTable(
+            "memberships",
+            table =>
+            {
+                table.HasCheckConstraint("ck_memberships_role", "role = 'owner'");
+                table.HasCheckConstraint(
+                    "ck_memberships_status",
+                    "status IN ('active', 'revoked')");
+            });
         membership.HasKey(item => item.Id).HasName("pk_memberships");
         membership.Property(item => item.Id).HasColumnName("id").ValueGeneratedNever();
         membership.Property(item => item.OrganizationId).HasColumnName("organization_id");
@@ -104,6 +117,11 @@ internal static class TenancyModelConfiguration
         securityEvent.HasKey(item => item.Id).HasName("pk_security_events");
         securityEvent.Property(item => item.Id).HasColumnName("id").ValueGeneratedNever();
         securityEvent.Property(item => item.OrganizationId).HasColumnName("organization_id");
+        securityEvent.Property(item => item.ActorUserId).HasColumnName("actor_user_id");
+        securityEvent.Property(item => item.TraceId)
+            .HasColumnName("trace_id")
+            .HasMaxLength(TenancyAuditContext.MaximumTraceIdLength)
+            .IsRequired();
         securityEvent.Property(item => item.EventType)
             .HasColumnName("event_type")
             .HasMaxLength(80)

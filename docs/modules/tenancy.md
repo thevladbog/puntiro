@@ -8,12 +8,12 @@ The module owns only schema `tenancy`. Its initial migration is `202608080001_In
 
 - `organizations`: UUIDv7 ID, display name, normalized unique slug, lifecycle status, UTC timestamps, and an optimistic-concurrency version;
 - `memberships`: UUIDv7 ID, organization ID, opaque external user ID, role, status, UTC timestamps, and an optimistic-concurrency version;
-- `security_events`: append-only, redacted organization security events with bounded event type, result, reason code, and UTC occurrence time;
+- `security_events`: append-only, redacted organization security events with actor user ID, a bounded trace ID, bounded event type, result, reason code, and UTC occurrence time;
 - `__EFMigrationsHistory`: EF migration history scoped to `tenancy`, so this module does not create migration metadata in `public` or another module's schema.
 
-PostgreSQL enforces unique `organizations.slug` and unique `(memberships.organization_id, memberships.user_id)`. Foreign keys remain inside `tenancy`; there is deliberately no database foreign key from a membership to an Identity table.
+PostgreSQL enforces unique `organizations.slug`, unique `(memberships.organization_id, memberships.user_id)`, and the approved lowercase organization, membership-role, and membership-status values with check constraints. Unknown stored lifecycle values therefore fail closed. Foreign keys remain inside `tenancy`; there is deliberately no database foreign key from a membership to an Identity table.
 
-`TenancyDbContext` rejects modified or deleted tracked security events. Organization activation updates the organization and appends `organization.activated` in the same database transaction. The event contains no display name, email, credential material, or other personal data.
+`TenancyDbContext` rejects modified or deleted tracked security events, and a PostgreSQL trigger rejects direct `UPDATE` or `DELETE` operations against `security_events`. Organization activation updates the organization and appends `organization.activated` in the same database transaction. The event contains no display name, email, credential material, or other personal data.
 
 ## Normalization and lifecycle
 
@@ -33,7 +33,9 @@ Activation is idempotent once the organization is active. A suspended organizati
 
 - create-or-find provisioning organization by normalized slug;
 - idempotent owner membership creation;
-- owner-gated atomic organization activation.
+- owner-gated atomic organization activation with a required `TenancyAuditContext`.
+
+`TenancyAuditContext` requires a non-empty opaque actor user ID and a 1–128 character trace ID. Trace IDs accept only ASCII letters, digits, `.`, `_`, `:`, and `-`; whitespace, separators, control characters, and unbounded text are rejected before database access. Callers must pass an already-redacted correlation value and must never put an email, credential, activation code, token, or other personal data in it. Even an idempotent activation validates the organization ID and audit context before returning.
 
 `ITenantAccessService` derives tenant access from active memberships joined to active organizations:
 
@@ -64,10 +66,12 @@ Review every generated operation before commit. It must use only schema `tenancy
 
 ## Failure modes
 
-- Invalid display names, slugs, or empty identifiers fail with argument exceptions before a write.
+- Invalid display names, slugs, empty identifiers, null audit context, or unsafe/overlong trace IDs fail with argument exceptions before lookup or an idempotent return.
 - Missing organizations fail with `KeyNotFoundException`.
 - Activation without an active owner, activation from a suspended state, or reuse of a revoked/non-owner membership fails closed with `InvalidOperationException`.
+- Revoked memberships and inactive organizations never grant tenant access.
 - Concurrent writes may produce `DbUpdateConcurrencyException`; callers must not overwrite another accepted change.
+- Direct modification or deletion of a stored security event is rejected by PostgreSQL.
 - PostgreSQL unique conflicts are reconciled only for the two idempotent create paths. Other provider errors propagate without exposing connection details.
 - Missing `ConnectionStrings__Puntiro` fails design-time context creation.
 - Missing `PUNTIRO_TEST_POSTGRES` fails integration-test setup; tests never fall back to SQLite, EF in-memory, or mocks.

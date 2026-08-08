@@ -11,6 +11,8 @@ internal sealed class TenantAccessService(TenancyDbContext context) : ITenantAcc
         Guid userId,
         CancellationToken cancellationToken)
     {
+        EnsureNotEmpty(userId, nameof(userId));
+
         var memberships = await (
                 from membership in context.Memberships.AsNoTracking()
                 join organization in context.Organizations.AsNoTracking()
@@ -33,12 +35,15 @@ internal sealed class TenantAccessService(TenancyDbContext context) : ITenantAcc
         };
     }
 
-    public Task<bool> IsActiveOwnerAsync(
+    public async Task<bool> IsActiveOwnerAsync(
         Guid organizationId,
         Guid userId,
         CancellationToken cancellationToken)
     {
-        return (
+        EnsureNotEmpty(organizationId, nameof(organizationId));
+        EnsureNotEmpty(userId, nameof(userId));
+
+        return await (
                 from membership in context.Memberships.AsNoTracking()
                 join organization in context.Organizations.AsNoTracking()
                     on membership.OrganizationId equals organization.Id
@@ -49,5 +54,13 @@ internal sealed class TenantAccessService(TenancyDbContext context) : ITenantAcc
                     && organization.Status == OrganizationStatus.Active
                 select membership.Id)
             .AnyAsync(cancellationToken);
+    }
+
+    private static void EnsureNotEmpty(Guid value, string parameterName)
+    {
+        if (value == Guid.Empty)
+        {
+            throw new ArgumentException("Identifier cannot be empty.", parameterName);
+        }
     }
 }

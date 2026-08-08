@@ -9,6 +9,8 @@ internal sealed class TenancySecurityEvent
     private TenancySecurityEvent(
         Guid id,
         Guid organizationId,
+        Guid actorUserId,
+        string traceId,
         string eventType,
         string result,
         string reasonCode,
@@ -16,6 +18,8 @@ internal sealed class TenancySecurityEvent
     {
         Id = id;
         OrganizationId = organizationId;
+        ActorUserId = actorUserId;
+        TraceId = traceId;
         EventType = eventType;
         Result = result;
         ReasonCode = reasonCode;
@@ -28,6 +32,10 @@ internal sealed class TenancySecurityEvent
 
     public Guid OrganizationId { get; private set; }
 
+    public Guid ActorUserId { get; private set; }
+
+    public string TraceId { get; private set; } = string.Empty;
+
     public string EventType { get; private set; } = string.Empty;
 
     public string Result { get; private set; } = string.Empty;
@@ -39,11 +47,15 @@ internal sealed class TenancySecurityEvent
     internal static TenancySecurityEvent OrganizationActivated(
         Guid id,
         Guid organizationId,
+        Guid actorUserId,
+        string traceId,
         DateTimeOffset occurredAtUtc)
     {
         return new TenancySecurityEvent(
             id,
             organizationId,
+            actorUserId,
+            traceId,
             "organization.activated",
             "success",
             "provisioning_completed",

@@ -84,7 +84,7 @@ internal sealed class Organization
         UpdatedAtUtc = EnsureUtc(updatedAtUtc);
     }
 
-    private static string NormalizeDisplayName(string displayName)
+    internal static string NormalizeDisplayName(string displayName)
     {
         ArgumentNullException.ThrowIfNull(displayName);
         var normalized = displayName.Trim();

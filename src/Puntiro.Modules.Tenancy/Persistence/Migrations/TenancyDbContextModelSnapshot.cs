@@ -72,7 +72,12 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_memberships_organization_user");
 
-                    b.ToTable("memberships", "tenancy");
+                    b.ToTable("memberships", "tenancy", t =>
+                        {
+                            t.HasCheckConstraint("ck_memberships_role", "role = 'owner'");
+
+                            t.HasCheckConstraint("ck_memberships_status", "status IN ('active', 'revoked')");
+                        });
                 });
 
             modelBuilder.Entity("Puntiro.Modules.Tenancy.Domain.Organization", b =>
@@ -119,7 +124,10 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_organizations_slug");
 
-                    b.ToTable("organizations", "tenancy");
+                    b.ToTable("organizations", "tenancy", t =>
+                        {
+                            t.HasCheckConstraint("ck_organizations_status", "status IN ('provisioning', 'active', 'suspended')");
+                        });
                 });
 
             modelBuilder.Entity("Puntiro.Modules.Tenancy.Domain.TenancySecurityEvent", b =>
@@ -127,6 +135,10 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
 
                     b.Property<string>("EventType")
                         .IsRequired()
@@ -153,6 +165,12 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("result");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("trace_id");
 
                     b.HasKey("Id")
                         .HasName("pk_security_events");

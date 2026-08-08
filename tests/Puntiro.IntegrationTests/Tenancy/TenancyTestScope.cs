@@ -20,17 +20,22 @@ internal sealed class TenancyTestScope : IAsyncDisposable
         string connectionString,
         CancellationToken cancellationToken)
     {
-        var options = new DbContextOptionsBuilder<TenancyDbContext>()
-            .UseNpgsql(
-                connectionString,
-                npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "tenancy"))
-            .Options;
-        var context = new TenancyDbContext(options);
+        var context = CreateContext(connectionString);
         await context.Database.MigrateAsync(cancellationToken);
 
         return new TenancyTestScope(
             context,
             new TenancyProvisioningService(context, TimeProvider.System));
+    }
+
+    internal static TenancyDbContext CreateContext(string connectionString)
+    {
+        var options = new DbContextOptionsBuilder<TenancyDbContext>()
+            .UseNpgsql(
+                connectionString,
+                npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "tenancy"))
+            .Options;
+        return new TenancyDbContext(options);
     }
 
     public ValueTask DisposeAsync()

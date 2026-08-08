@@ -15,6 +15,7 @@ internal sealed class TenancyProvisioningService(
         string slug,
         CancellationToken cancellationToken)
     {
+        var normalizedDisplayName = Organization.NormalizeDisplayName(displayName);
         var normalizedSlug = OrganizationSlug.Normalize(slug).Value;
         var existing = await context.Organizations
             .AsNoTracking()
@@ -27,7 +28,7 @@ internal sealed class TenancyProvisioningService(
         var now = timeProvider.GetUtcNow();
         var organization = Organization.StartProvisioning(
             Guid.CreateVersion7(),
-            displayName,
+            normalizedDisplayName,
             normalizedSlug);
         organization.SetCreatedAt(now);
         context.Organizations.Add(organization);
@@ -114,8 +115,14 @@ internal sealed class TenancyProvisioningService(
         }
     }
 
-    public async Task ActivateAsync(Guid organizationId, CancellationToken cancellationToken)
+    public async Task ActivateAsync(
+        Guid organizationId,
+        TenancyAuditContext auditContext,
+        CancellationToken cancellationToken)
     {
+        EnsureNotEmpty(organizationId, nameof(organizationId));
+        ArgumentNullException.ThrowIfNull(auditContext);
+
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var organization = await context.Organizations
             .SingleOrDefaultAsync(item => item.Id == organizationId, cancellationToken)
@@ -139,6 +146,8 @@ internal sealed class TenancyProvisioningService(
         context.SecurityEvents.Add(TenancySecurityEvent.OrganizationActivated(
             Guid.CreateVersion7(),
             organizationId,
+            auditContext.ActorUserId,
+            auditContext.TraceId,
             now));
 
         await context.SaveChangesAsync(cancellationToken);
@@ -151,6 +160,14 @@ internal sealed class TenancyProvisioningService(
         {
             SqlState: PostgresErrorCodes.UniqueViolation
         };
+    }
+
+    private static void EnsureNotEmpty(Guid value, string parameterName)
+    {
+        if (value == Guid.Empty)
+        {
+            throw new ArgumentException("Identifier cannot be empty.", parameterName);
+        }
     }
 
     private static OrganizationSnapshot Snapshot(Organization organization)

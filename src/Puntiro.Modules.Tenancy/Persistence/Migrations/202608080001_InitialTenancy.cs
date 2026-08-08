@@ -30,6 +30,7 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_organizations", x => x.id);
+                    table.CheckConstraint("ck_organizations_status", "status IN ('provisioning', 'active', 'suspended')");
                 });
 
             migrationBuilder.CreateTable(
@@ -49,6 +50,8 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_memberships", x => x.id);
+                    table.CheckConstraint("ck_memberships_role", "role = 'owner'");
+                    table.CheckConstraint("ck_memberships_status", "status IN ('active', 'revoked')");
                     table.ForeignKey(
                         name: "fk_memberships_organizations_organization_id",
                         column: x => x.organization_id,
@@ -65,6 +68,8 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     organization_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    actor_user_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    trace_id = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
                     event_type = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
                     result = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     reason_code = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
@@ -107,6 +112,24 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
                 schema: "tenancy",
                 table: "security_events",
                 columns: new[] { "organization_id", "occurred_at" });
+
+            migrationBuilder.Sql(
+                """
+                CREATE FUNCTION tenancy.reject_security_event_mutation()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    RAISE EXCEPTION 'tenancy security events are append-only'
+                        USING ERRCODE = 'P0001';
+                END;
+                $$;
+
+                CREATE TRIGGER tr_security_events_append_only
+                BEFORE UPDATE OR DELETE ON tenancy.security_events
+                FOR EACH ROW
+                EXECUTE FUNCTION tenancy.reject_security_event_mutation();
+                """);
         }
 
         /// <inheritdoc />
@@ -119,6 +142,9 @@ namespace Puntiro.Modules.Tenancy.Persistence.Migrations
             migrationBuilder.DropTable(
                 name: "security_events",
                 schema: "tenancy");
+
+            migrationBuilder.Sql(
+                "DROP FUNCTION tenancy.reject_security_event_mutation();");
 
             migrationBuilder.DropTable(
                 name: "organizations",

@@ -12,6 +12,7 @@ namespace Puntiro.IntegrationTests.Tenancy;
 public sealed class TenancyPersistenceTests(PostgresDatabase database)
 {
     private static readonly Guid UserId = Guid.Parse("01989f73-0f9a-7aa2-9acf-8781f8a00001");
+    private static readonly TenancyAuditContext AuditContext = new(UserId, "trace-tenancy-test-001");
 
     [Fact]
     public async Task Slug_and_membership_constraints_are_enforced_by_postgres()
@@ -73,7 +74,7 @@ public sealed class TenancyPersistenceTests(PostgresDatabase database)
             cancellationToken);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => scope.Service.ActivateAsync(organization.Id, cancellationToken));
+            () => scope.Service.ActivateAsync(organization.Id, AuditContext, cancellationToken));
         Assert.Empty(await scope.Context.SecurityEvents
             .Where(item => item.OrganizationId == organization.Id)
             .ToListAsync(cancellationToken));
@@ -82,7 +83,7 @@ public sealed class TenancyPersistenceTests(PostgresDatabase database)
             organization.Id,
             UserId,
             cancellationToken);
-        await scope.Service.ActivateAsync(organization.Id, cancellationToken);
+        await scope.Service.ActivateAsync(organization.Id, AuditContext, cancellationToken);
 
         var activated = await scope.Context.Organizations
             .AsNoTracking()
@@ -95,6 +96,8 @@ public sealed class TenancyPersistenceTests(PostgresDatabase database)
         Assert.Equal("organization.activated", securityEvent.EventType);
         Assert.Equal("success", securityEvent.Result);
         Assert.Equal("provisioning_completed", securityEvent.ReasonCode);
+        Assert.Equal(UserId, securityEvent.ActorUserId);
+        Assert.Equal("trace-tenancy-test-001", securityEvent.TraceId);
     }
 
     [Fact]
@@ -198,7 +201,10 @@ public sealed class TenancyPersistenceTests(PostgresDatabase database)
             organization.Id,
             userId,
             cancellationToken);
-        await scope.Service.ActivateAsync(organization.Id, cancellationToken);
+        await scope.Service.ActivateAsync(
+            organization.Id,
+            new TenancyAuditContext(userId, $"trace-{prefix}-activation"),
+            cancellationToken);
         return organization;
     }
 }
