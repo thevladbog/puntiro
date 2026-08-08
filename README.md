@@ -1,8 +1,8 @@
-# Puntiro Design System Platform
+# Puntiro Shipment-Label Platform
 
-Puntiro Design System Platform is the local source of truth for Puntiro product UI: design tokens, accessible React components, kiosk patterns, composition rules, bilingual documentation, and executable Storybook examples.
+Puntiro is a shipment-label platform. This design-system workspace is the local source of truth for Puntiro product UI: design tokens, accessible React components, kiosk patterns, composition rules, bilingual documentation, and executable Storybook examples.
 
-This repository contains no product API, persistence, routing, printer I/O, or completed application screens. Compositions remain a documented contract until a separate design and approval stage.
+This repository currently contains the design-system foundation rather than product API, persistence, routing, printer I/O, or completed application screens. Compositions remain a documented contract until a separate design and approval stage. See the [documentation map](docs/README.md) for product, architecture, decision, runbook, and implementation references.
 
 ## Prerequisites
 
