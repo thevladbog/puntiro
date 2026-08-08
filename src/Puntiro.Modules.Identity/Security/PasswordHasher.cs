@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using Konscious.Security.Cryptography;
 using Puntiro.Security;
 
@@ -8,8 +9,8 @@ namespace Puntiro.Modules.Identity.Security;
 
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed record PasswordHash(
-    [property: DebuggerBrowsable(DebuggerBrowsableState.Never)] byte[] Salt,
-    [property: DebuggerBrowsable(DebuggerBrowsableState.Never)] byte[] Hash,
+    [property: DebuggerBrowsable(DebuggerBrowsableState.Never), JsonIgnore] byte[] Salt,
+    [property: DebuggerBrowsable(DebuggerBrowsableState.Never), JsonIgnore] byte[] Hash,
     int MemoryKiB,
     int Iterations,
     int Parallelism,
@@ -96,16 +97,16 @@ internal sealed class PasswordHasher : IPasswordHasher
         PasswordHash stored,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(password);
         ArgumentNullException.ThrowIfNull(stored);
         cancellationToken.ThrowIfCancellationRequested();
-        PasswordPolicy.Validate(password);
 
-        if (!HasSafeStoredParameters(stored))
+        if (!HasSafeStoredParameters(stored) ||
+            !PasswordPolicy.TryEncodeVerificationCandidate(password, out var passwordBytes))
         {
             return PasswordVerification.Failed;
         }
 
-        var passwordBytes = Encoding.UTF8.GetBytes(password);
         byte[]? candidate = null;
         try
         {

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using Puntiro.Security;
 
 namespace Puntiro.Modules.Identity.Security;
@@ -16,9 +17,10 @@ internal sealed class GeneratedRecoveryCode
         Verifier = verifier;
     }
 
+    [JsonIgnore]
     public SensitiveValue Code { get; }
 
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    [DebuggerBrowsable(DebuggerBrowsableState.Never), JsonIgnore]
     public byte[] Verifier { get; }
 
     public override string ToString() => nameof(GeneratedRecoveryCode);
@@ -32,6 +34,7 @@ internal sealed class RecoveryCodeService : IDisposable
     private const int RecoveryValueLength = 16;
     private const int EncodedLength = 26;
     private const int DefaultBatchSize = 10;
+    private const int MaximumGenerationAttempts = DefaultBatchSize * 4;
     private const int GroupSize = 4;
     private const string Purpose = "Puntiro.Identity.RecoveryCode.v1";
     private static readonly byte[] PurposePrefix = Encoding.ASCII.GetBytes($"{Purpose}\0");
@@ -58,25 +61,62 @@ internal sealed class RecoveryCodeService : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var generated = new List<GeneratedRecoveryCode>(DefaultBatchSize);
-        for (var index = 0; index < DefaultBatchSize; index++)
+        try
         {
-            var randomValue = new byte[RecoveryValueLength];
-            try
+            for (var attempt = 0;
+                 attempt < MaximumGenerationAttempts && generated.Count < DefaultBatchSize;
+                 attempt++)
             {
-                _secretGenerator.Fill(randomValue);
-                var normalized = Base32.Encode(randomValue);
-                var verifier = ComputeVerifier(normalized);
-                generated.Add(new GeneratedRecoveryCode(
-                    new SensitiveValue(Group(normalized)),
-                    verifier));
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(randomValue);
-            }
-        }
+                var randomValue = new byte[RecoveryValueLength];
+                byte[]? verifier = null;
+                SensitiveValue? code = null;
+                try
+                {
+                    _secretGenerator.Fill(randomValue);
+                    var normalized = Base32.Encode(randomValue);
+                    verifier = ComputeVerifier(normalized);
 
-        return generated;
+                    var duplicate = false;
+                    foreach (var existing in generated)
+                    {
+                        duplicate |= CryptographicOperations.FixedTimeEquals(existing.Verifier, verifier);
+                    }
+
+                    if (duplicate)
+                    {
+                        continue;
+                    }
+
+                    code = new SensitiveValue(Group(normalized));
+                    generated.Add(new GeneratedRecoveryCode(code, verifier));
+                    code = null;
+                    verifier = null;
+                }
+                finally
+                {
+                    code?.Dispose();
+                    if (verifier is not null)
+                    {
+                        CryptographicOperations.ZeroMemory(verifier);
+                    }
+
+                    CryptographicOperations.ZeroMemory(randomValue);
+                }
+            }
+
+            if (generated.Count != DefaultBatchSize)
+            {
+                throw new InvalidOperationException(
+                    "Could not generate a unique recovery-code batch within the bounded attempt limit.");
+            }
+
+            return generated;
+        }
+        catch
+        {
+            ClearGenerated(generated);
+            throw;
+        }
     }
 
     public bool Verify(string presentedCode, ReadOnlySpan<byte> expectedVerifier)
@@ -176,5 +216,14 @@ internal sealed class RecoveryCodeService : IDisposable
                 output[outputIndex++] = input[inputIndex];
             }
         });
+    }
+
+    private static void ClearGenerated(IEnumerable<GeneratedRecoveryCode> generated)
+    {
+        foreach (var item in generated)
+        {
+            item.Code.Dispose();
+            CryptographicOperations.ZeroMemory(item.Verifier);
+        }
     }
 }

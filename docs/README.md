@@ -18,6 +18,7 @@
 
 ## Modules
 
+- [Identity cryptographic primitives](modules/identity.md)
 - [Tenancy](modules/tenancy.md)
 
 ## Runbooks

@@ -26,3 +26,34 @@ internal sealed class TestSecretGenerator : ISecretGenerator
         value.CopyTo(destination);
     }
 }
+
+internal sealed class RepeatingSecretGenerator : ISecretGenerator
+{
+    private readonly byte[] _value;
+    private readonly int _maximumDraws;
+    private int _draws;
+
+    public RepeatingSecretGenerator(byte[] value, int maximumDraws = 100)
+    {
+        _value = (byte[])value.Clone();
+        _maximumDraws = maximumDraws;
+    }
+
+    public void Fill(Span<byte> destination)
+    {
+        _draws++;
+        if (_draws > _maximumDraws)
+        {
+            throw new TestSecretLimitExceededException();
+        }
+
+        if (_value.Length != destination.Length)
+        {
+            throw new InvalidOperationException("The deterministic secret has an unexpected length.");
+        }
+
+        _value.CopyTo(destination);
+    }
+}
+
+internal sealed class TestSecretLimitExceededException : Exception;

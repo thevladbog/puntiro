@@ -27,6 +27,32 @@ public sealed class EmailAddressTests
     }
 
     [Theory]
+    [InlineData("Σ", "ς", "σ@example.com")]
+    [InlineData("S", "ſ", "s@example.com")]
+    [InlineData("K", "K", "k@example.com")]
+    public void Normalize_uses_stable_simple_case_fold_for_local_part(
+        string firstLocalPart,
+        string secondLocalPart,
+        string expected)
+    {
+        var first = EmailAddress.Normalize($"{firstLocalPart}@example.com");
+        var second = EmailAddress.Normalize($"{secondLocalPart}@example.com");
+
+        Assert.Equal(expected, first.Normalized);
+        Assert.Equal(expected, second.Normalized);
+    }
+
+    [Fact]
+    public void Normalize_does_not_collapse_local_parts_outside_invariant_simple_fold()
+    {
+        var latinI = EmailAddress.Normalize("I@example.com");
+        var dotlessI = EmailAddress.Normalize("ı@example.com");
+
+        Assert.False(string.Equals("I", "ı", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEqual(latinI.Normalized, dotlessI.Normalized);
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("missing-at.example")]

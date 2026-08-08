@@ -46,7 +46,7 @@ internal sealed class EmailAddress
             throw new ArgumentException("Email must contain one local part and one domain.", nameof(input));
         }
 
-        var localPart = canonical[..separator].ToLowerInvariant();
+        var localPart = FoldLocalPart(canonical.AsSpan(0, separator));
         var domain = canonical[(separator + 1)..];
 
         string asciiDomain;
@@ -83,6 +83,23 @@ internal sealed class EmailAddress
         }
 
         return new EmailAddress(display, normalized);
+    }
+
+    private static string FoldLocalPart(ReadOnlySpan<char> localPart)
+    {
+        // Version 1 identity-key fold: NFC first, then invariant upper/lower per Unicode scalar.
+        // The upper pass collapses simple-fold peers such as sigma/final-sigma before the
+        // lower pass materializes one stable key without using the current culture.
+        var folded = new StringBuilder(localPart.Length);
+        Span<char> encoded = stackalloc char[2];
+        foreach (var rune in localPart.EnumerateRunes())
+        {
+            var canonicalRune = Rune.ToLowerInvariant(Rune.ToUpperInvariant(rune));
+            var written = canonicalRune.EncodeToUtf16(encoded);
+            folded.Append(encoded[..written]);
+        }
+
+        return folded.ToString();
     }
 
     public override string ToString() => nameof(EmailAddress);

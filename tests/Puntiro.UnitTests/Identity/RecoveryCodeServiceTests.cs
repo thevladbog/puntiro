@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Puntiro.Modules.Identity.Security;
 using Puntiro.Security;
@@ -32,6 +35,33 @@ public sealed class RecoveryCodeServiceTests
             Assert.True(service.Verify(item.Code.Reveal(), item.Verifier));
             Assert.True(service.Verify(item.Code.Reveal().Replace("-", string.Empty, StringComparison.Ordinal), item.Verifier));
         });
+    }
+
+    [Fact]
+    public void GenerateBatch_retries_duplicate_draws_until_the_batch_is_unique()
+    {
+        var uniqueValues = CreateRecoveryValues();
+        var draws = new[] { uniqueValues[0], uniqueValues[0] }
+            .Concat(uniqueValues.Skip(1))
+            .ToArray();
+        using var service = new RecoveryCodeService(
+            RecoveryKey,
+            new TestSecretGenerator(draws));
+
+        var batch = service.GenerateBatch();
+
+        Assert.Equal(10, batch.Count);
+        Assert.Equal(10, batch.Select(static item => item.Code.Reveal()).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void GenerateBatch_fails_closed_after_bounded_permanent_duplicates()
+    {
+        using var service = new RecoveryCodeService(
+            RecoveryKey,
+            new RepeatingSecretGenerator(CreateRecoveryValues()[0]));
+
+        Assert.Throws<InvalidOperationException>(() => service.GenerateBatch());
     }
 
     [Fact]
@@ -86,6 +116,62 @@ public sealed class RecoveryCodeServiceTests
         Assert.Equal("[REDACTED]", secret.ToString());
         Assert.Equal("do-not-log-this-value", secret.Reveal());
         Assert.DoesNotContain(generated.Code.Reveal(), generated.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Sensitive_and_generated_values_have_fail_closed_json_contracts()
+    {
+        var sensitive = new SensitiveValue("do-not-serialize");
+        using var service = new RecoveryCodeService(
+            RecoveryKey,
+            new TestSecretGenerator(CreateRecoveryValues()));
+        var generated = service.GenerateBatch()[0];
+
+        Assert.Equal("\"[REDACTED]\"", JsonSerializer.Serialize(sensitive));
+        Assert.Equal("{}", JsonSerializer.Serialize(generated));
+
+        sensitive.Dispose();
+        Assert.Equal("\"[REDACTED]\"", JsonSerializer.Serialize(sensitive));
+    }
+
+    [Fact]
+    public void Sensitive_value_debugger_proxy_exposes_only_redacted_text()
+    {
+        using var sensitive = new SensitiveValue("do-not-show-in-debugger");
+        var proxyAttribute = Assert.IsType<DebuggerTypeProxyAttribute>(
+            Assert.Single(typeof(SensitiveValue).GetCustomAttributes(typeof(DebuggerTypeProxyAttribute), inherit: false)));
+        var proxyType = Type.GetType(proxyAttribute.ProxyTypeName);
+        Assert.NotNull(proxyType);
+        var proxy = Activator.CreateInstance(
+            proxyType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: [sensitive],
+            culture: null);
+        Assert.NotNull(proxy);
+
+        var values = proxyType
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Select(property => property.GetValue(proxy));
+
+        Assert.All(values, value => Assert.Equal("[REDACTED]", value));
+    }
+
+    [Fact]
+    public void Sensitive_value_owns_a_mutable_copy_and_disposal_is_idempotent()
+    {
+        char[] callerBuffer = ['s', 'e', 'c', 'r', 'e', 't'];
+        var sensitive = new SensitiveValue(callerBuffer.AsSpan());
+        Array.Clear(callerBuffer);
+
+        Assert.Equal("secret", sensitive.Use(static value => new string(value)));
+
+        sensitive.Dispose();
+        sensitive.Dispose();
+
+        Assert.Equal("[REDACTED]", sensitive.ToString());
+        Assert.Throws<ObjectDisposedException>(() => sensitive.Reveal());
+        Assert.Throws<ObjectDisposedException>(() => sensitive.Use(static value => value.Length));
     }
 
     [Fact]

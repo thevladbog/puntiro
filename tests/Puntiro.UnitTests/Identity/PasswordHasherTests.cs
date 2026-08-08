@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Konscious.Security.Cryptography;
 using Puntiro.Modules.Identity.Security;
 using Puntiro.UnitTests.Security;
@@ -54,6 +55,63 @@ public sealed class PasswordHasherTests
         Assert.Equal(
             PasswordVerification.Failed,
             await hasher.VerifyAsync("é-correct-horse", stored, TestCancellation));
+    }
+
+    [Fact]
+    public async Task Verify_returns_failed_for_ordinary_invalid_candidates()
+    {
+        var stored = new PasswordHash(FirstSalt, new byte[32], 19456, 2, 1, "argon2id");
+        var hasher = new PasswordHasher(new TestSecretGenerator());
+        string[] candidates = [string.Empty, "short", "invalid\ud800"];
+
+        foreach (var candidate in candidates)
+        {
+            Assert.Equal(
+                PasswordVerification.Failed,
+                await hasher.VerifyAsync(candidate, stored, TestCancellation));
+        }
+    }
+
+    [Fact]
+    public async Task Verify_accepts_historical_candidates_outside_current_creation_scalar_policy()
+    {
+        var hasher = new PasswordHasher(new TestSecretGenerator());
+        string[] historicalPasswords = ["short", new string('x', 200)];
+
+        foreach (var password in historicalPasswords)
+        {
+            var hash = await DeriveAsync(password, FirstSalt, memoryKiB: 19456, iterations: 2, parallelism: 1);
+            var stored = new PasswordHash(FirstSalt, hash, 19456, 2, 1, "argon2id");
+
+            Assert.Equal(
+                PasswordVerification.Valid,
+                await hasher.VerifyAsync(password, stored, TestCancellation));
+        }
+    }
+
+    [Fact]
+    public async Task Verify_fails_closed_before_argon_for_candidates_above_hard_bounds()
+    {
+        var stored = new PasswordHash(FirstSalt, new byte[32], 19456, 2, 1, "argon2id");
+        var hasher = new PasswordHasher(new TestSecretGenerator());
+
+        Assert.Equal(
+            PasswordVerification.Failed,
+            await hasher.VerifyAsync(new string('x', 1025), stored, TestCancellation));
+    }
+
+    [Fact]
+    public async Task Verify_rejects_programmer_null_and_honors_cancellation()
+    {
+        var stored = new PasswordHash(FirstSalt, new byte[32], 19456, 2, 1, "argon2id");
+        var hasher = new PasswordHasher(new TestSecretGenerator());
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => hasher.VerifyAsync(null!, stored, TestCancellation));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => hasher.VerifyAsync("historical", stored, cancellation.Token));
     }
 
     [Fact]
@@ -137,6 +195,18 @@ public sealed class PasswordHasherTests
         var stored = await hasher.HashAsync("correct horse battery staple", TestCancellation);
 
         Assert.Equal(nameof(PasswordHash), stored.ToString());
+    }
+
+    [Fact]
+    public void Password_hash_json_contains_only_non_secret_policy_metadata()
+    {
+        var stored = new PasswordHash(FirstSalt, new byte[32], 19456, 2, 1, "argon2id");
+
+        var json = JsonSerializer.Serialize(stored);
+
+        Assert.Equal(
+            "{\"MemoryKiB\":19456,\"Iterations\":2,\"Parallelism\":1,\"Algorithm\":\"argon2id\"}",
+            json);
     }
 
     private static async Task<byte[]> DeriveAsync(
