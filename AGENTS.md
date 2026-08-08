@@ -26,6 +26,7 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 - Resolve current official documentation through Context7 before adding or updating a library.
 - Check official security advisories after Context7; Context7 does not replace vulnerability review.
 - Pin exact stable registry npm, NuGet, and tool versions. Only first-party `@puntiro/*` workspace packages may use `workspace:*`; do not introduce other ranges, prereleases, or floating SDKs.
+- Keep a valid sibling `packages.lock.json` for every project listed in `Puntiro.slnx`, including project-only/BCL-only projects, so locked restore never creates unreviewed files.
 - Update lockfiles, SBOM inputs, documentation, and tests in the same change.
 
 ## Internal Access Policy
@@ -39,7 +40,9 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]
 ```
 
-CRLF line endings are normalized and accepted; every other character, declaration order, blank line, and formatting detail must match the block. The `InternalsVisibleTo` token is reserved outside that canonical file, including in comments and ordinary strings. Do not configure friend access through `.csproj`, imported or inherited MSBuild `.props`/`.targets`, aliases, generated sources, escapes, or entities. The fast `foundation:check` enforces the reviewable source convention; the mandatory aggregate runs `check:dotnet`, which performs a fresh Release build and then `internals:check` to verify the effective custom-attribute metadata in every protected assembly. Build success alone is not proof of this policy.
+CRLF line endings are normalized and accepted; every other character, declaration order, blank line, and formatting detail must match the block. The `InternalsVisibleTo` token is reserved outside that canonical file, including in comments and ordinary strings. Do not configure friend access through `.csproj`, imported or inherited MSBuild `.props`/`.targets`, aliases, generated sources, escapes, or entities.
+
+The fast `foundation:check` enforces the reviewable source convention. The mandatory `check:dotnet` then restores in locked mode, asks MSBuild to evaluate the Release `Compile`, `AssemblyAttribute`, legacy `AssemblyAttributes`, and `InternalsVisibleTo` inputs (including arbitrary imports), requires the canonical file to be compiled exactly once, and rejects alternative generated friend attributes. It builds the solution into a unique empty OS-temporary `BaseOutputPath`, requires exactly one output for every protected assembly and the BCL-only verifier, and verifies only those exact outputs with metadata inspection. Fixed `bin/Release` files, a successful build exit code, timestamps, and assembly execution are never accepted as provenance or freshness proof. Diagnostics point back to this section.
 
 ## Documentation Policy
 

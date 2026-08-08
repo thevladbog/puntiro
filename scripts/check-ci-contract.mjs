@@ -9,7 +9,7 @@ const approvedActions = new Map([
   }],
   ['actions/setup-node', {
     sha: '820762786026740c76f36085b0efc47a31fe5020',
-    count: 1,
+    count: 2,
   }],
   ['actions/setup-dotnet', {
     sha: 'a98b56852c35b8e3190ac28c8c2271da59106c68',
@@ -18,8 +18,7 @@ const approvedActions = new Map([
 ]);
 
 const expectedAuditCommand = 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive';
-const expectedInternalsCommand = 'dotnet run --project tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj --configuration Release --no-build -- src/Puntiro.Security/bin/Release/net10.0/Puntiro.Security.dll src/Puntiro.Modules.Identity/bin/Release/net10.0/Puntiro.Modules.Identity.dll src/Puntiro.Modules.Tenancy/bin/Release/net10.0/Puntiro.Modules.Tenancy.dll src/Puntiro.Modules.Integrations/bin/Release/net10.0/Puntiro.Modules.Integrations.dll tools/Puntiro.Provisioning/bin/Release/net10.0/Puntiro.Provisioning.dll';
-const expectedDotnetCommand = 'dotnet build Puntiro.slnx --configuration Release && corepack pnpm internals:check';
+const expectedDotnetCommand = 'node scripts/check-dotnet.mjs';
 const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
 
 async function workflowFiles(root) {
@@ -88,8 +87,6 @@ function validateFoundationWorkflow(content) {
     requireJobCommands(errors, 'repository-contracts', repositoryJob, [
       'corepack pnpm install --frozen-lockfile',
       'corepack pnpm check:foundation',
-      'dotnet restore Puntiro.slnx',
-      'dotnet build Puntiro.slnx --configuration Release --no-restore',
     ]);
   }
 
@@ -98,10 +95,10 @@ function validateFoundationWorkflow(content) {
   } else {
     requireJobLine(errors, 'windows-build', windowsJob, 'name: Windows compile');
     requireJobLine(errors, 'windows-build', windowsJob, 'runs-on: windows-latest');
+    requireJobLine(errors, 'windows-build', windowsJob, 'node-version: 24.19.0');
     requireJobLine(errors, 'windows-build', windowsJob, 'dotnet-version: 10.0.302');
     requireJobCommands(errors, 'windows-build', windowsJob, [
-      'dotnet restore Puntiro.slnx',
-      'dotnet build Puntiro.slnx --configuration Release --no-restore',
+      'node scripts/check-dotnet.mjs',
     ]);
   }
 
@@ -162,10 +159,10 @@ export async function validateCiContract(rootUrl) {
       );
     }
     if (manifest.scripts?.['check:dotnet'] !== expectedDotnetCommand) {
-      errors.push('package.json check:dotnet must build and then verify final assembly metadata');
+      errors.push('package.json check:dotnet must invoke the definitive fresh-output policy chain');
     }
-    if (manifest.scripts?.['internals:check'] !== expectedInternalsCommand) {
-      errors.push('package.json internals:check must inspect every protected Release assembly');
+    if (Object.hasOwn(manifest.scripts ?? {}, 'internals:check')) {
+      errors.push('package.json must not expose fixed-path internals:check');
     }
     if (manifest.scripts?.['check:foundation'] !== expectedFoundationCommand) {
       errors.push('package.json check:foundation does not match the approved aggregate command');

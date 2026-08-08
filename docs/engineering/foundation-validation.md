@@ -8,8 +8,8 @@
 - Repository contracts: pass
 - Admin shell typecheck/build: pass
 - Kiosk shell typecheck/build: pass
-- .NET solution build on development host: pass
-- Effective friend-assembly metadata after a fresh Release build: pass
+- .NET solution build into a unique empty temporary output root on development host: pass
+- Evaluated MSBuild provenance and effective friend-assembly metadata for those exact Release outputs: pass
 
 ## CI
 

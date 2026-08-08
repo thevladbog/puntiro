@@ -98,6 +98,27 @@ test('dependency policy rejects an unapproved dotnet-ef version', async () => {
   });
 });
 
+test('every solution project must keep a valid sibling NuGet lockfile', async () => {
+  await withPolicyFixture({
+    nugetFiles: {
+      'Puntiro.slnx': `<Solution>
+        <Project Path="src/Locked/Locked.csproj" />
+        <Project Path="src/Missing/Missing.csproj" />
+      </Solution>`,
+      'src/Locked/Locked.csproj': '<Project Sdk="Microsoft.NET.Sdk" />',
+      'src/Locked/packages.lock.json': JSON.stringify({
+        version: 2,
+        dependencies: { 'net10.0': {} },
+      }),
+      'src/Missing/Missing.csproj': '<Project Sdk="Microsoft.NET.Sdk" />',
+    },
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      'src/Missing/Missing.csproj must keep a valid sibling packages.lock.json for locked restore',
+    ]);
+  });
+});
+
 test('npm registry and lockfile are portable to GitHub runners', async () => {
   const npmrc = await readFile(new URL('../.npmrc', import.meta.url), 'utf8').catch(() => '');
   const lockfile = await readFile(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8');

@@ -25,25 +25,24 @@ jobs:
           dotnet-version: 10.0.302
       - run: corepack pnpm install --frozen-lockfile
       - run: corepack pnpm check:foundation
-      - run: dotnet restore Puntiro.slnx
-      - run: dotnet build Puntiro.slnx --configuration Release --no-restore
   windows-build:
     name: Windows compile
     runs-on: windows-latest
     steps:
       - uses: ${checkout}
+      - uses: ${setupNode}
+        with:
+          node-version: 24.19.0
       - uses: ${setupDotnet}
         with:
           dotnet-version: 10.0.302
-      - run: dotnet restore Puntiro.slnx
-      - run: dotnet build Puntiro.slnx --configuration Release --no-restore
+      - run: node scripts/check-dotnet.mjs
 `;
 
 const validManifest = {
   scripts: {
     'dependencies:audit': 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive',
-    'internals:check': 'dotnet run --project tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj --configuration Release --no-build -- src/Puntiro.Security/bin/Release/net10.0/Puntiro.Security.dll src/Puntiro.Modules.Identity/bin/Release/net10.0/Puntiro.Modules.Identity.dll src/Puntiro.Modules.Tenancy/bin/Release/net10.0/Puntiro.Modules.Tenancy.dll src/Puntiro.Modules.Integrations/bin/Release/net10.0/Puntiro.Modules.Integrations.dll tools/Puntiro.Provisioning/bin/Release/net10.0/Puntiro.Provisioning.dll',
-    'check:dotnet': 'dotnet build Puntiro.slnx --configuration Release && corepack pnpm internals:check',
+    'check:dotnet': 'node scripts/check-dotnet.mjs',
     'check:foundation': 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet',
   },
 };
@@ -86,7 +85,7 @@ test('rejects duplicate and missing approved action occurrences', async t => {
   );
   const duplicateFixture = await withCiFixture(t, duplicate);
   assert.ok((await validateCiContract(duplicateFixture.rootUrl)).includes(
-    'actions/setup-node must occur exactly 1 time(s), received 2',
+    'actions/setup-node must occur exactly 2 time(s), received 3',
   ));
 
   const missing = validWorkflow.replace(`      - uses: ${setupDotnet}\n`, '');
@@ -96,25 +95,15 @@ test('rejects duplicate and missing approved action occurrences', async t => {
   ));
 });
 
-test('requires aggregate, restore, and Release build commands in their platform jobs', async t => {
+test('requires the aggregate and definitive fresh .NET chain in their platform jobs', async t => {
   const workflow = validWorkflow
     .replace('      - run: corepack pnpm check:foundation\n', '')
-    .replaceAll(
-      '      - run: dotnet restore Puntiro.slnx\n',
-      '      - run: dotnet restore Puntiro.slnx --locked-mode\n',
-    )
-    .replaceAll(
-      '      - run: dotnet build Puntiro.slnx --configuration Release --no-restore\n',
-      '      - run: dotnet build Puntiro.slnx --configuration Debug --no-restore\n',
-    );
+    .replace('      - run: node scripts/check-dotnet.mjs\n', '      - run: dotnet build Puntiro.slnx\n');
   const { rootUrl } = await withCiFixture(t, workflow);
 
   const errors = await validateCiContract(rootUrl);
   assert.ok(errors.includes('repository-contracts job must run: corepack pnpm check:foundation'));
-  assert.ok(errors.includes('repository-contracts job must run: dotnet restore Puntiro.slnx'));
-  assert.ok(errors.includes('repository-contracts job must run: dotnet build Puntiro.slnx --configuration Release --no-restore'));
-  assert.ok(errors.includes('windows-build job must run: dotnet restore Puntiro.slnx'));
-  assert.ok(errors.includes('windows-build job must run: dotnet build Puntiro.slnx --configuration Release --no-restore'));
+  assert.ok(errors.includes('windows-build job must run: node scripts/check-dotnet.mjs'));
 });
 
 test('rejects an audit or aggregate command that drifts from the exact contract', async t => {
@@ -129,14 +118,14 @@ test('rejects an audit or aggregate command that drifts from the exact contract'
   ]);
 });
 
-test('rejects .NET checks that build without verifying final assembly metadata', async t => {
+test('rejects fixed-path or split .NET checks that can verify stale assembly metadata', async t => {
   const manifest = structuredClone(validManifest);
-  manifest.scripts['check:dotnet'] = 'dotnet build Puntiro.slnx --configuration Release';
-  manifest.scripts['internals:check'] = 'node scripts/check-foundation.mjs';
+  manifest.scripts['check:dotnet'] = 'dotnet build Puntiro.slnx --configuration Release && corepack pnpm internals:check';
+  manifest.scripts['internals:check'] = 'dotnet run --project tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj --configuration Release --no-build -- src/Puntiro.Security/bin/Release/net10.0/Puntiro.Security.dll';
   const { rootUrl } = await withCiFixture(t, validWorkflow, manifest);
 
   assert.deepEqual((await validateCiContract(rootUrl)).filter(error => error.startsWith('package.json')), [
-    'package.json check:dotnet must build and then verify final assembly metadata',
-    'package.json internals:check must inspect every protected Release assembly',
+    'package.json check:dotnet must invoke the definitive fresh-output policy chain',
+    'package.json must not expose fixed-path internals:check',
   ]);
 });

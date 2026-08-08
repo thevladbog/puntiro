@@ -45,7 +45,7 @@ before(async () => {
     '--configuration', 'Release',
     '--output', toolOutput,
     '--artifacts-path', toolArtifacts,
-    '-p:RestorePackagesWithLockFile=false',
+    '-p:RestoreLockedMode=true',
   ], repositoryRoot);
 
   assert.equal(build.status, 0, `failed to build assembly-policy verifier:\n${commandFailure(build)}`);
