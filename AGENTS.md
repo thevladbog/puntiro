@@ -14,8 +14,10 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 
 - Bootstrap: `corepack pnpm install --frozen-lockfile`
 - Dependencies: `corepack pnpm dependencies:check`
+- Vulnerability audit: `corepack pnpm dependencies:audit`
 - Documentation: `corepack pnpm docs:check`
 - Foundation boundaries: `corepack pnpm foundation:check`
+- Foundation aggregate: `corepack pnpm check:foundation`
 - .NET solution: `dotnet build Puntiro.slnx --configuration Release`
 - Existing UI pipeline: `corepack pnpm check`
 
