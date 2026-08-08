@@ -7,6 +7,7 @@ const requiredFiles = [
   'README.md',
   'docs/README.md',
   'docs/adr/0001-modular-monolith-agent.md',
+  'docs/adr/0002-effective-friend-metadata-enforcement.md',
   'docs/engineering/foundation-validation.md',
   'docs/runbooks/development-bootstrap.md',
   'docs/superpowers/specs/2026-08-08-puntiro-technical-architecture-design.md'

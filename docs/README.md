@@ -14,6 +14,7 @@
 ## Architecture Decisions
 
 - [ADR 0001: Modular monolith and Windows Agent](adr/0001-modular-monolith-agent.md)
+- [ADR 0002: Effective friend metadata enforcement](adr/0002-effective-friend-metadata-enforcement.md)
 
 ## Runbooks
 

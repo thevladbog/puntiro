@@ -8,8 +8,8 @@
 - Repository contracts: pass
 - Admin shell typecheck/build: pass
 - Kiosk shell typecheck/build: pass
-- .NET solution build into a unique empty temporary output root on development host: pass
-- Evaluated MSBuild provenance and effective friend-assembly metadata for those exact Release outputs: pass
+- .NET solution plus protected-project builds with outputs and intermediates isolated in unique temporary artifacts roots on development host: pass
+- Protected producer path, assembly identity, exact `TargetPath`, and effective friend-assembly metadata binding for those Release outputs: pass
 
 ## CI
 

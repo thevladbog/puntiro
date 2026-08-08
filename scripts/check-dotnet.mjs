@@ -1,36 +1,34 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const policyReference = 'AGENTS.md#internal-access-policy';
-const friendAttributeName = 'System.Runtime.CompilerServices.InternalsVisibleTo';
 const defaultRepositoryRoot = fileURLToPath(new URL('../', import.meta.url));
+const defaultVerifierProject = {
+  projectPath: 'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj',
+  assemblyName: 'Puntiro.AssemblyPolicy',
+};
 const defaultProtectedProjects = [
   {
     projectPath: 'src/Puntiro.Security/Puntiro.Security.csproj',
-    canonicalSource: 'Properties/AssemblyInfo.cs',
     assemblyName: 'Puntiro.Security',
   },
   {
     projectPath: 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
-    canonicalSource: 'Properties/AssemblyInfo.cs',
     assemblyName: 'Puntiro.Modules.Identity',
   },
   {
     projectPath: 'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
-    canonicalSource: 'Properties/AssemblyInfo.cs',
     assemblyName: 'Puntiro.Modules.Tenancy',
   },
   {
     projectPath: 'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
-    canonicalSource: 'Properties/AssemblyInfo.cs',
     assemblyName: 'Puntiro.Modules.Integrations',
   },
   {
     projectPath: 'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
-    canonicalSource: 'Properties/AssemblyInfo.cs',
     assemblyName: 'Puntiro.Provisioning',
   },
 ];
@@ -55,56 +53,153 @@ function runDotnet({ dotnet, args, repositoryRoot, timeout = 600_000 }) {
   });
 
   if (result.status !== 0 || result.error) {
-    const details = [result.error?.message, result.stdout, result.stderr]
+    const processResult = result.signal
+      ? `terminated by ${result.signal}`
+      : `exit status ${result.status ?? 'unknown'}`;
+    const details = [processResult, result.error?.message, result.stdout, result.stderr]
       .filter(Boolean)
       .join('\n')
       .trim();
-    throw new Error(
-      `command failed: ${commandText(dotnet, args)}${details ? `\n${details}` : ''}`,
-    );
+    throw new Error(`command failed: ${commandText(dotnet, args)}\n${details}`);
   }
 
   return result;
 }
 
 function comparablePath(value) {
-  const normalized = path.normalize(path.resolve(value));
+  let normalized = path.normalize(path.resolve(value));
+  if (process.platform === 'darwin') {
+    for (const aliasedRoot of ['/private/tmp', '/private/var']) {
+      if (normalized === aliasedRoot || normalized.startsWith(`${aliasedRoot}${path.sep}`)) {
+        normalized = normalized.slice('/private'.length);
+        break;
+      }
+    }
+  }
   return process.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
 }
 
-function decodeIdentifierEscapes(value) {
-  return value
-    .replace(/\\U([0-9a-fA-F]{8})/g, (_, codePoint) => String.fromCodePoint(Number.parseInt(codePoint, 16)))
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, codePoint) => String.fromCodePoint(Number.parseInt(codePoint, 16)));
+function isStrictlyInside(parent, candidate) {
+  const relative = path.relative(comparablePath(parent), comparablePath(candidate));
+  return relative !== ''
+    && relative !== '..'
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
 }
 
-function normalizedAttributeName(value) {
-  const decoded = decodeIdentifierEscapes(String(value ?? ''))
-    .replaceAll(/\s/g, '')
-    .replace(/^global::/, '');
-  return decoded.endsWith('Attribute') ? decoded.slice(0, -'Attribute'.length) : decoded;
-}
-
-function parseEvaluatedItems(stdout, projectPath) {
+function parseEvaluatedProperties(stdout, projectPath) {
   try {
     const payload = JSON.parse(stdout.trim());
-    if (!payload?.Items || typeof payload.Items !== 'object') throw new Error('missing Items object');
-    return payload.Items;
+    if (!payload?.Properties || typeof payload.Properties !== 'object') {
+      throw new Error('missing Properties object');
+    }
+    return payload.Properties;
   } catch (error) {
-    throw new Error(`${projectPath}: cannot parse evaluated MSBuild items: ${error.message}`);
+    throw new Error(`${projectPath}: cannot parse evaluated MSBuild properties: ${error.message}`);
   }
 }
 
-export async function inspectProtectedProjectInputs({
-  dotnet = process.env.PUNTIRO_DOTNET_BIN ?? 'dotnet',
-  repositoryRoot = defaultRepositoryRoot,
+function requireEvaluatedAbsolutePath(properties, propertyName, projectPath) {
+  const value = properties[propertyName];
+  if (typeof value !== 'string' || value.length === 0 || !path.isAbsolute(value)) {
+    throw new Error(
+      `${projectPath}: evaluated ${propertyName} must be an absolute path ` +
+      `(see ${policyReference})`,
+    );
+  }
+  return value;
+}
+
+function validateProjectPlan({
+  repositoryRoot,
   projectPath,
-  canonicalSource,
-  baseOutputPath,
+  assemblyName,
+  artifactsRoot,
+  properties,
 }) {
-  const projectDirectory = path.dirname(path.resolve(repositoryRoot, projectPath));
-  const canonicalPath = comparablePath(path.resolve(projectDirectory, canonicalSource));
-  const outputPath = `${path.resolve(baseOutputPath)}${path.sep}`;
+  const evaluatedProjectPath = requireEvaluatedAbsolutePath(
+    properties,
+    'MSBuildProjectFullPath',
+    projectPath,
+  );
+  const evaluatedArtifactsPath = requireEvaluatedAbsolutePath(
+    properties,
+    'ArtifactsPath',
+    projectPath,
+  );
+  const evaluatedOutputPath = requireEvaluatedAbsolutePath(
+    properties,
+    'OutputPath',
+    projectPath,
+  );
+  const evaluatedIntermediateOutputPath = requireEvaluatedAbsolutePath(
+    properties,
+    'IntermediateOutputPath',
+    projectPath,
+  );
+  const evaluatedTargetPath = requireEvaluatedAbsolutePath(
+    properties,
+    'TargetPath',
+    projectPath,
+  );
+  const expectedProjectPath = comparablePath(path.resolve(repositoryRoot, projectPath));
+  if (comparablePath(evaluatedProjectPath) !== expectedProjectPath) {
+    throw new Error(
+      `${projectPath}: evaluated MSBuildProjectFullPath does not match the requested project ` +
+      `(see ${policyReference})`,
+    );
+  }
+  if (properties.AssemblyName !== assemblyName) {
+    throw new Error(
+      `${projectPath}: expected assembly identity ${assemblyName}; ` +
+      `evaluated ${properties.AssemblyName ?? '<missing>'} (see ${policyReference})`,
+    );
+  }
+  if (comparablePath(evaluatedArtifactsPath) !== comparablePath(artifactsRoot)) {
+    throw new Error(
+      `${projectPath}: evaluated ArtifactsPath escaped its unique project root ` +
+      `(see ${policyReference})`,
+    );
+  }
+
+  const expectedBinRoot = path.join(artifactsRoot, 'bin');
+  const expectedObjRoot = path.join(artifactsRoot, 'obj');
+  if (!isStrictlyInside(expectedBinRoot, evaluatedOutputPath)) {
+    throw new Error(
+      `${projectPath}: evaluated OutputPath must stay under its unique artifacts/bin root ` +
+      `(see ${policyReference})`,
+    );
+  }
+  if (!isStrictlyInside(expectedObjRoot, evaluatedIntermediateOutputPath)) {
+    throw new Error(
+      `${projectPath}: evaluated IntermediateOutputPath must stay under its unique artifacts/obj root ` +
+      `(see ${policyReference})`,
+    );
+  }
+  if (!isStrictlyInside(evaluatedOutputPath, evaluatedTargetPath)) {
+    throw new Error(
+      `${projectPath}: evaluated TargetPath must stay under the project's exact OutputPath ` +
+      `(see ${policyReference})`,
+    );
+  }
+
+  return {
+    projectPath: expectedProjectPath,
+    assemblyName,
+    artifactsRoot: comparablePath(artifactsRoot),
+    outputPath: comparablePath(evaluatedOutputPath),
+    intermediateOutputPath: comparablePath(evaluatedIntermediateOutputPath),
+    targetPath: path.resolve(evaluatedTargetPath),
+  };
+}
+
+function evaluateProjectPlan({
+  dotnet,
+  repositoryRoot,
+  projectPath,
+  assemblyName,
+  artifactsRoot,
+}) {
   const result = runDotnet({
     dotnet,
     repositoryRoot,
@@ -112,134 +207,138 @@ export async function inspectProtectedProjectInputs({
       'msbuild',
       projectPath,
       '-property:Configuration=Release',
-      `-property:BaseOutputPath=${outputPath}`,
-      '-target:GetAssemblyAttributes',
-      '-getItem:Compile,AssemblyAttribute,AssemblyAttributes,InternalsVisibleTo',
+      `-property:ArtifactsPath=${artifactsRoot}`,
+      '-property:UseArtifactsOutput=true',
+      '-getProperty:MSBuildProjectFullPath,AssemblyName,TargetPath,OutputPath,IntermediateOutputPath,ArtifactsPath',
     ],
   });
-  const items = parseEvaluatedItems(result.stdout, projectPath);
-  const compileItems = Array.isArray(items.Compile) ? items.Compile : [];
-  const canonicalCount = compileItems.filter(item => {
-    const fullPath = item.FullPath
-      ? item.FullPath
-      : path.resolve(projectDirectory, String(item.Identity ?? ''));
-    return comparablePath(fullPath) === canonicalPath;
-  }).length;
-  const generatedFriendAttributes = (Array.isArray(items.AssemblyAttribute)
-    ? items.AssemblyAttribute
-    : []).filter(item => normalizedAttributeName(item.Identity) === friendAttributeName);
-  const legacyFriendAttributes = (Array.isArray(items.AssemblyAttributes)
-    ? items.AssemblyAttributes
-    : []).filter(item => normalizedAttributeName(item.Identity) === friendAttributeName);
-  const friendItems = Array.isArray(items.InternalsVisibleTo) ? items.InternalsVisibleTo : [];
-  const errors = [];
-
-  if (canonicalCount !== 1) {
-    errors.push(
-      `${projectPath}: ${canonicalSource} must be an effective Compile item exactly once ` +
-      `(received ${canonicalCount}; see ${policyReference})`,
-    );
-  }
-  if (generatedFriendAttributes.length > 0) {
-    errors.push(
-      `${projectPath}: effective AssemblyAttribute items must not generate InternalsVisibleTo; ` +
-      `received ${generatedFriendAttributes.length} (see ${policyReference})`,
-    );
-  }
-  if (legacyFriendAttributes.length > 0) {
-    errors.push(
-      `${projectPath}: effective AssemblyAttributes items must not generate InternalsVisibleTo; ` +
-      `received ${legacyFriendAttributes.length} (see ${policyReference})`,
-    );
-  }
-  if (friendItems.length > 0) {
-    errors.push(
-      `${projectPath}: effective InternalsVisibleTo items are forbidden; ` +
-      `received ${friendItems.length} (see ${policyReference})`,
-    );
-  }
-
-  return errors;
+  return validateProjectPlan({
+    repositoryRoot,
+    projectPath,
+    assemblyName,
+    artifactsRoot,
+    properties: parseEvaluatedProperties(result.stdout, projectPath),
+  });
 }
 
-async function filesNamed(root, fileName) {
-  let entries;
+async function requireProducedTarget(plan) {
+  let target;
   try {
-    entries = await readdir(root, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === 'ENOENT') return [];
-    throw error;
+    target = await stat(plan.targetPath);
+  } catch {
+    target = undefined;
   }
-
-  const matches = [];
-  for (const entry of entries) {
-    const entryPath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      matches.push(...await filesNamed(entryPath, fileName));
-    } else if (entry.isFile() && entry.name === fileName) {
-      matches.push(entryPath);
-    }
+  if (!target?.isFile()) {
+    throw new Error(
+      `${plan.projectPath}: isolated build did not produce expected target ${plan.targetPath} ` +
+      `(see ${policyReference})`,
+    );
   }
-  return matches;
 }
 
-export async function buildFreshOutputs({
+export async function buildProjectInIsolatedArtifacts({
   dotnet = process.env.PUNTIRO_DOTNET_BIN ?? 'dotnet',
   repositoryRoot = defaultRepositoryRoot,
-  solutionPath = 'Puntiro.slnx',
-  protectedAssemblyNames,
-  verifierAssemblyName = 'Puntiro.AssemblyPolicy',
-  beforeBuild,
+  projectPath,
+  assemblyName,
+  artifactsRoot,
   logger = console,
 }) {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-check-'));
-  const outputRoot = path.join(temporaryRoot, 'output');
-  const baseOutputPath = `${outputRoot}${path.sep}`;
+  logger.info?.(`Restoring ${projectPath} into isolated artifacts: ${artifactsRoot}`);
+  runDotnet({
+    dotnet,
+    repositoryRoot,
+    args: ['restore', projectPath, '--locked-mode', '--artifacts-path', artifactsRoot],
+  });
+  const planBeforeBuild = evaluateProjectPlan({
+    dotnet,
+    repositoryRoot,
+    projectPath,
+    assemblyName,
+    artifactsRoot,
+  });
 
-  try {
-    if (beforeBuild) await beforeBuild(outputRoot);
-    logger.info?.(`Building Release assemblies into unique output root: ${outputRoot}`);
-    runDotnet({
-      dotnet,
-      repositoryRoot,
-      args: [
-        'build',
-        solutionPath,
-        '--configuration', 'Release',
-        '--no-restore',
-        '--disable-build-servers',
-        '-m:1',
-        `-p:BaseOutputPath=${baseOutputPath}`,
-      ],
-    });
+  runDotnet({
+    dotnet,
+    repositoryRoot,
+    args: [
+      'build',
+      projectPath,
+      '--configuration', 'Release',
+      '--no-restore',
+      '--disable-build-servers',
+      '-m:1',
+      '--artifacts-path', artifactsRoot,
+    ],
+  });
+  await requireProducedTarget(planBeforeBuild);
 
-    const outputByAssembly = new Map();
-    const expectedAssemblyNames = [...new Set([
-      ...protectedAssemblyNames,
-      verifierAssemblyName,
-    ])];
-    for (const assemblyName of expectedAssemblyNames) {
-      const fileName = `${assemblyName}.dll`;
-      const matches = await filesNamed(outputRoot, fileName);
-      if (matches.length !== 1) {
-        throw new Error(
-          `fresh build must produce exactly one ${fileName} in its unique output root; ` +
-          `received ${matches.length}`,
-        );
-      }
-      outputByAssembly.set(assemblyName, matches[0]);
+  const planAfterBuild = evaluateProjectPlan({
+    dotnet,
+    repositoryRoot,
+    projectPath,
+    assemblyName,
+    artifactsRoot,
+  });
+  if (JSON.stringify(planAfterBuild) !== JSON.stringify(planBeforeBuild)) {
+    throw new Error(
+      `${projectPath}: evaluated target plan changed across the isolated build ` +
+      `(see ${policyReference})`,
+    );
+  }
+
+  return planAfterBuild.targetPath;
+}
+
+function buildSolutionInIsolatedArtifacts({
+  dotnet,
+  repositoryRoot,
+  solutionPath,
+  artifactsRoot,
+  logger,
+}) {
+  logger.info?.(`Restoring the locked solution into isolated artifacts: ${artifactsRoot}`);
+  runDotnet({
+    dotnet,
+    repositoryRoot,
+    args: ['restore', solutionPath, '--locked-mode', '--artifacts-path', artifactsRoot],
+  });
+  runDotnet({
+    dotnet,
+    repositoryRoot,
+    args: [
+      'build',
+      solutionPath,
+      '--configuration', 'Release',
+      '--no-restore',
+      '--disable-build-servers',
+      '-m:1',
+      '--artifacts-path', artifactsRoot,
+    ],
+  });
+}
+
+function safeArtifactLabel(index, assemblyName) {
+  const safeName = assemblyName.replaceAll(/[^A-Za-z0-9_.-]/g, '_');
+  return `${String(index).padStart(2, '0')}-${safeName}`;
+}
+
+function validateProtectedProjects(protectedProjects, repositoryRoot) {
+  const names = new Set();
+  const paths = new Set();
+  for (const project of protectedProjects) {
+    if (!project.projectPath || !project.assemblyName) {
+      throw new Error(`protected project entries require projectPath and assemblyName (see ${policyReference})`);
     }
-
-    const verifier = outputByAssembly.get(verifierAssemblyName);
-    const protectedAssemblies = protectedAssemblyNames.map(name => outputByAssembly.get(name));
-    logger.info?.('Verifying metadata from the exact assemblies produced by this build.');
-    runDotnet({
-      dotnet,
-      repositoryRoot,
-      args: [verifier, ...protectedAssemblies],
-    });
-  } finally {
-    await rm(temporaryRoot, { force: true, recursive: true });
+    if (!names.add(project.assemblyName)) {
+      throw new Error(
+        `duplicate protected assembly identity: ${project.assemblyName} (see ${policyReference})`,
+      );
+    }
+    const projectPath = comparablePath(path.resolve(repositoryRoot, project.projectPath));
+    if (!paths.add(projectPath)) {
+      throw new Error(`duplicate protected project path: ${project.projectPath} (see ${policyReference})`);
+    }
   }
 }
 
@@ -248,38 +347,58 @@ export async function runDotnetPolicy({
   repositoryRoot = defaultRepositoryRoot,
   solutionPath = 'Puntiro.slnx',
   protectedProjects = defaultProtectedProjects,
-  verifierAssemblyName = 'Puntiro.AssemblyPolicy',
+  verifierProject = defaultVerifierProject,
   logger = console,
 } = {}) {
-  logger.info?.('Restoring the locked .NET dependency graph.');
-  runDotnet({
-    dotnet,
-    repositoryRoot,
-    args: ['restore', solutionPath, '--locked-mode'],
-  });
+  validateProtectedProjects(protectedProjects, repositoryRoot);
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-check-'));
 
-  await buildFreshOutputs({
-    dotnet,
-    repositoryRoot,
-    solutionPath,
-    protectedAssemblyNames: protectedProjects.map(project => project.assemblyName),
-    verifierAssemblyName,
-    logger,
-    beforeBuild: async outputRoot => {
-      const errors = [];
-      for (const project of protectedProjects) {
-        errors.push(...await inspectProtectedProjectInputs({
+  try {
+    buildSolutionInIsolatedArtifacts({
+      dotnet,
+      repositoryRoot,
+      solutionPath,
+      artifactsRoot: path.join(temporaryRoot, '00-solution'),
+      logger,
+    });
+    const verifierPath = await buildProjectInIsolatedArtifacts({
+      dotnet,
+      repositoryRoot,
+      projectPath: verifierProject.projectPath,
+      assemblyName: verifierProject.assemblyName,
+      artifactsRoot: path.join(temporaryRoot, safeArtifactLabel(1, verifierProject.assemblyName)),
+      logger,
+    });
+    const protectedOutputs = [];
+    for (const [index, project] of protectedProjects.entries()) {
+      protectedOutputs.push({
+        assemblyName: project.assemblyName,
+        targetPath: await buildProjectInIsolatedArtifacts({
           dotnet,
           repositoryRoot,
           projectPath: project.projectPath,
-          canonicalSource: project.canonicalSource,
-          baseOutputPath: outputRoot,
-        }));
-      }
-      if (errors.length > 0) throw new Error(errors.join('\n'));
-      logger.info?.('Evaluated MSBuild inputs preserve canonical internal-access provenance.');
-    },
-  });
+          assemblyName: project.assemblyName,
+          artifactsRoot: path.join(
+            temporaryRoot,
+            safeArtifactLabel(index + 2, project.assemblyName),
+          ),
+          logger,
+        }),
+      });
+    }
+
+    logger.info?.('Verifying exact project TargetPaths, assembly identities, and friend metadata.');
+    runDotnet({
+      dotnet,
+      repositoryRoot,
+      args: [
+        verifierPath,
+        ...protectedOutputs.flatMap(output => [output.assemblyName, output.targetPath]),
+      ],
+    });
+  } finally {
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

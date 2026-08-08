@@ -7,8 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
+const verifierProjectPath = path.join(
+  repositoryRoot,
+  'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj',
+);
 const dotnet = process.env.PUNTIRO_DOTNET_BIN ?? 'dotnet';
-const policyModuleUrl = new URL('./check-dotnet.mjs', import.meta.url);
 const approvedAssemblyInfo = `using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Puntiro.UnitTests")]
@@ -17,7 +20,6 @@ const approvedAssemblyInfo = `using System.Runtime.CompilerServices;
 
 let policyModule;
 let testRoot;
-let verifierDll;
 
 function runDotnet(args, cwd) {
   return spawnSync(dotnet, args, {
@@ -37,15 +39,9 @@ function commandFailure(result) {
   return [result.error?.message, result.stdout, result.stderr].filter(Boolean).join('\n');
 }
 
-async function loadPolicyModule() {
-  try {
-    return await import(policyModuleUrl.href);
-  } catch (error) {
-    assert.fail(`check-dotnet policy module must be loadable: ${error.message}`);
-  }
-}
-
-async function writeSdkFiles(root) {
+async function createFixtureRoot(name) {
+  const root = path.join(testRoot, name);
+  await mkdir(root, { recursive: true });
   await writeFile(path.join(root, 'global.json'), JSON.stringify({
     sdk: {
       version: '10.0.302',
@@ -57,99 +53,108 @@ async function writeSdkFiles(root) {
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 </Project>
 `);
-}
-
-async function createProtectedProject(name, { customProps, relocatedSource } = {}) {
-  const root = path.join(testRoot, name);
-  await mkdir(path.join(root, 'Properties'), { recursive: true });
-  await writeSdkFiles(root);
-  await writeFile(path.join(root, `${name}.csproj`), `<Project Sdk="Microsoft.NET.Sdk">
-  <Import Project="Custom.props" Condition="Exists('Custom.props')" />
-</Project>
-`);
-  await writeFile(path.join(root, 'Properties/AssemblyInfo.cs'), approvedAssemblyInfo);
-  await writeFile(path.join(root, 'Marker.cs'), 'public static class Marker;\n');
-  if (customProps) await writeFile(path.join(root, 'Custom.props'), customProps);
-  if (relocatedSource) await writeFile(path.join(root, 'RelocatedAssemblyInfo.cs'), relocatedSource);
   return root;
 }
 
-function buildProject(root, name) {
-  const result = runDotnet([
-    'build',
-    `${name}.csproj`,
-    '--configuration', 'Release',
-    '-p:RestorePackagesWithLockFile=false',
-  ], root);
-  assert.equal(result.status, 0, `scratch project must compile:\n${commandFailure(result)}`);
-  return path.join(root, 'bin/Release/net10.0', `${name}.dll`);
+async function writeProject(root, relativeDirectory, projectName, {
+  properties = '',
+  projectExtra = '',
+  assemblyInfo = approvedAssemblyInfo,
+  files = {},
+} = {}) {
+  const projectDirectory = path.join(root, relativeDirectory);
+  await mkdir(path.join(projectDirectory, 'Properties'), { recursive: true });
+  await writeFile(path.join(projectDirectory, `${projectName}.csproj`), `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    ${properties}
+  </PropertyGroup>
+  ${projectExtra}
+</Project>
+`);
+  if (assemblyInfo !== null) {
+    await writeFile(path.join(projectDirectory, 'Properties/AssemblyInfo.cs'), assemblyInfo);
+  }
+  await writeFile(path.join(projectDirectory, 'Marker.cs'), 'public static class Marker;\n');
+  await writeFile(path.join(projectDirectory, 'packages.lock.json'), JSON.stringify({
+    version: 2,
+    dependencies: { 'net10.0': {} },
+  }));
+  for (const [relativePath, content] of Object.entries(files)) {
+    const target = path.join(projectDirectory, relativePath);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+  return path.posix.join(relativeDirectory, `${projectName}.csproj`);
 }
 
-function verifyMetadata(assemblyPath) {
-  const result = runDotnet([verifierDll, assemblyPath], repositoryRoot);
-  assert.equal(
-    result.status,
-    0,
-    `relocated exact declarations prove the metadata-only check can pass:\n${commandFailure(result)}`,
-  );
+function buildNormally(root, projectPath) {
+  const result = runDotnet([
+    'build',
+    projectPath,
+    '--configuration', 'Release',
+    '-p:RestoreLockedMode=true',
+  ], root);
+  assert.equal(result.status, 0, `fixture must compile normally:\n${commandFailure(result)}`);
+}
+
+function runPolicy(root, solutionPath, protectedProjects) {
+  return policyModule.runDotnetPolicy({
+    dotnet,
+    repositoryRoot: root,
+    solutionPath,
+    protectedProjects,
+    verifierProject: {
+      projectPath: verifierProjectPath,
+      assemblyName: 'Puntiro.AssemblyPolicy',
+    },
+    logger: {},
+  });
 }
 
 before(async () => {
-  policyModule = await loadPolicyModule();
+  policyModule = await import(new URL('./check-dotnet.mjs', import.meta.url).href);
   testRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-policy-'));
-  const verifierOutput = path.join(testRoot, 'verifier');
-  const verifierArtifacts = path.join(testRoot, 'verifier-artifacts');
-  const result = runDotnet([
-    'build',
-    path.join(repositoryRoot, 'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj'),
-    '--configuration', 'Release',
-    '--output', verifierOutput,
-    '--artifacts-path', verifierArtifacts,
-    '-p:RestoreLockedMode=true',
-  ], repositoryRoot);
-  assert.equal(result.status, 0, `failed to build metadata verifier:\n${commandFailure(result)}`);
-  verifierDll = path.join(verifierOutput, 'Puntiro.AssemblyPolicy.dll');
 });
 
 after(async () => {
   if (testRoot) await rm(testRoot, { force: true, recursive: true });
 });
 
-test('rejects a real compiled relocation of the exact friend declarations', async () => {
-  const name = 'RelocatedFriends';
-  const root = await createProtectedProject(name, {
-    customProps: `<Project>
-  <ItemGroup>
-    <Compile Remove="Properties/AssemblyInfo.cs" />
+test('accepts relocated declarations when final identity and friend allowlist are exact', async () => {
+  const root = await createFixtureRoot('relocated');
+  const projectPath = await writeProject(root, '.', 'RelocatedFriends', {
+    projectExtra: `<ItemGroup>
+    <Compile Remove="RelocatedAssemblyInfo.cs" />
   </ItemGroup>
-</Project>
-`,
-    relocatedSource: String.raw`[assembly: System.Runtime.CompilerServices.Internals\u0056isibleToAttribute("Puntiro.UnitTests")]
+  <Target Name="RelocateFriendDeclarations" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Compile Remove="Properties/AssemblyInfo.cs" />
+      <Compile Include="RelocatedAssemblyInfo.cs" />
+    </ItemGroup>
+  </Target>`,
+    files: {
+      'RelocatedAssemblyInfo.cs': String.raw`[assembly: System.Runtime.CompilerServices.Internals\u0056isibleToAttribute("Puntiro.UnitTests")]
 [assembly: System.Runtime.CompilerServices.Internals\u0056isibleToAttribute("Puntiro.IntegrationTests")]
 `,
-  });
-  verifyMetadata(buildProject(root, name));
-
-  const errors = await policyModule.inspectProtectedProjectInputs({
-    dotnet,
-    repositoryRoot: root,
-    projectPath: `${name}.csproj`,
-    canonicalSource: 'Properties/AssemblyInfo.cs',
-    baseOutputPath: path.join(root, 'fresh-output'),
+    },
   });
 
-  assert.deepEqual(errors, [
-    `${name}.csproj: Properties/AssemblyInfo.cs must be an effective Compile item exactly once (received 0; see AGENTS.md#internal-access-policy)`,
-  ]);
+  await assert.doesNotReject(runPolicy(root, projectPath, [{
+    projectPath,
+    assemblyName: 'RelocatedFriends',
+  }]));
 });
 
-test('rejects exact friend declarations recreated by an arbitrary imported MSBuild file', async () => {
-  const name = 'ImportedFriends';
-  const root = await createProtectedProject(name, {
-    customProps: `<Project>
+test('accepts imported MSBuild attributes when final friend allowlist is exact', async () => {
+  const root = await createFixtureRoot('imported');
+  const projectPath = await writeProject(root, '.', 'ImportedFriends', {
+    projectExtra: '<Import Project="Custom.props" />',
+    files: {
+      'Custom.props': `<Project>
   <ItemGroup>
     <Compile Remove="Properties/AssemblyInfo.cs" />
     <AssemblyAttribute Include="System.Runtime.CompilerServices.Internals&#86;isibleToAttribute">
@@ -161,63 +166,21 @@ test('rejects exact friend declarations recreated by an arbitrary imported MSBui
   </ItemGroup>
 </Project>
 `,
-  });
-  verifyMetadata(buildProject(root, name));
-
-  const errors = await policyModule.inspectProtectedProjectInputs({
-    dotnet,
-    repositoryRoot: root,
-    projectPath: `${name}.csproj`,
-    canonicalSource: 'Properties/AssemblyInfo.cs',
-    baseOutputPath: path.join(root, 'fresh-output'),
+    },
   });
 
-  assert.deepEqual(errors, [
-    `${name}.csproj: Properties/AssemblyInfo.cs must be an effective Compile item exactly once (received 0; see AGENTS.md#internal-access-policy)`,
-    `${name}.csproj: effective AssemblyAttribute items must not generate InternalsVisibleTo; received 2 (see AGENTS.md#internal-access-policy)`,
-  ]);
+  await assert.doesNotReject(runPolicy(root, projectPath, [{
+    projectPath,
+    assemblyName: 'ImportedFriends',
+  }]));
 });
 
-test('rejects exact friend declarations generated through legacy AssemblyAttributes inputs', async () => {
-  const name = 'LegacyImportedFriends';
-  const root = await createProtectedProject(name, {
-    customProps: `<Project>
-  <PropertyGroup>
-    <AssemblyAttributesPath>GeneratedFriendAttributes.cs</AssemblyAttributesPath>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Remove="Properties/AssemblyInfo.cs" />
-    <AssemblyAttributes Include="System.Runtime.CompilerServices.Internals&#86;isibleToAttribute">
-      <_Parameter1>Puntiro.UnitTests</_Parameter1>
-    </AssemblyAttributes>
-    <AssemblyAttributes Include="System.Runtime.CompilerServices.Internals&#86;isibleToAttribute">
-      <_Parameter1>Puntiro.IntegrationTests</_Parameter1>
-    </AssemblyAttributes>
-  </ItemGroup>
-</Project>
-`,
-  });
-  verifyMetadata(buildProject(root, name));
-
-  const errors = await policyModule.inspectProtectedProjectInputs({
-    dotnet,
-    repositoryRoot: root,
-    projectPath: `${name}.csproj`,
-    canonicalSource: 'Properties/AssemblyInfo.cs',
-    baseOutputPath: path.join(root, 'fresh-output'),
-  });
-
-  assert.deepEqual(errors, [
-    `${name}.csproj: Properties/AssemblyInfo.cs must be an effective Compile item exactly once (received 0; see AGENTS.md#internal-access-policy)`,
-    `${name}.csproj: effective AssemblyAttributes items must not generate InternalsVisibleTo; received 2 (see AGENTS.md#internal-access-policy)`,
-  ]);
-});
-
-test('rejects a successful build that leaves only a stale fixed-path assembly', async () => {
-  const name = 'StaleOutput';
-  const root = await createProtectedProject(name);
-  const staleAssembly = buildProject(root, name);
-  await access(staleAssembly);
+test('rejects build success when only stale normal bin and obj exist', async () => {
+  const root = await createFixtureRoot('stale');
+  const projectPath = await writeProject(root, '.', 'StaleOutput');
+  buildNormally(root, projectPath);
+  await access(path.join(root, 'bin/Release/net10.0/StaleOutput.dll'));
+  await access(path.join(root, 'obj/project.assets.json'));
   await writeFile(path.join(root, 'Directory.Build.targets'), `<Project>
   <PropertyGroup>
     <BuildDependsOn></BuildDependsOn>
@@ -226,13 +189,27 @@ test('rejects a successful build that leaves only a stale fixed-path assembly', 
 `);
 
   await assert.rejects(
-    policyModule.buildFreshOutputs({
-      dotnet,
-      repositoryRoot: root,
-      solutionPath: `${name}.csproj`,
-      protectedAssemblyNames: [name],
-      verifierAssemblyName: name,
-    }),
-    /fresh build must produce exactly one StaleOutput\.dll in its unique output root; received 0/,
+    runPolicy(root, projectPath, [{ projectPath, assemblyName: 'StaleOutput' }]),
+    /isolated build did not produce expected target .*StaleOutput\.dll/,
+  );
+});
+
+test('does not substitute an approved unprotected collision DLL for the protected output', async () => {
+  const root = await createFixtureRoot('collision');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected', {
+    assemblyInfo: `${approvedAssemblyInfo}[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unapproved.Tests")]\n`,
+  });
+  const collisionProject = await writeProject(root, 'Collision', 'Collision', {
+    properties: '<AssemblyName>Protected</AssemblyName>',
+  });
+  buildNormally(root, collisionProject);
+  await access(path.join(root, 'Collision/bin/Release/net10.0/Protected.dll'));
+
+  await assert.rejects(
+    runPolicy(root, protectedProject, [{
+      projectPath: protectedProject,
+      assemblyName: 'Protected',
+    }]),
+    /Unapproved\.Tests/,
   );
 });

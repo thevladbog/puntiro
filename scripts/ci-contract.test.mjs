@@ -125,7 +125,7 @@ test('rejects fixed-path or split .NET checks that can verify stale assembly met
   const { rootUrl } = await withCiFixture(t, validWorkflow, manifest);
 
   assert.deepEqual((await validateCiContract(rootUrl)).filter(error => error.startsWith('package.json')), [
-    'package.json check:dotnet must invoke the definitive fresh-output policy chain',
+    'package.json check:dotnet must invoke the definitive isolated-artifact identity policy chain',
     'package.json must not expose fixed-path internals:check',
   ]);
 });

@@ -31,7 +31,7 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 
 ## Internal Access Policy
 
-Production projects that expose internals to tests must keep the only two friend declarations in `<project>/Properties/AssemblyInfo.cs`, using this canonical block:
+The protected production assembly identities are `Puntiro.Security`, `Puntiro.Modules.Identity`, `Puntiro.Modules.Tenancy`, `Puntiro.Modules.Integrations`, and `Puntiro.Provisioning`. Each built assembly must contain exactly these two friend names in genuine BCL `InternalsVisibleToAttribute` metadata, once each, and no other friend metadata:
 
 ```csharp
 using System.Runtime.CompilerServices;
@@ -40,9 +40,11 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]
 ```
 
-CRLF line endings are normalized and accepted; every other character, declaration order, blank line, and formatting detail must match the block. The `InternalsVisibleTo` token is reserved outside that canonical file, including in comments and ordinary strings. Do not configure friend access through `.csproj`, imported or inherited MSBuild `.props`/`.targets`, aliases, generated sources, escapes, or entities.
+`<project>/Properties/AssemblyInfo.cs` with the block above is the preferred repository convention because it is easy to review. It is not a security invariant or a required metadata origin. Equivalent declarations may be relocated or produced by MSBuild, and the `InternalsVisibleTo` token is not reserved in other source, comments, strings, or build files. Only the effective metadata in the protected assembly is authoritative.
 
-The fast `foundation:check` enforces the reviewable source convention. The mandatory `check:dotnet` then restores in locked mode, asks MSBuild to evaluate the Release `Compile`, `AssemblyAttribute`, legacy `AssemblyAttributes`, and `InternalsVisibleTo` inputs (including arbitrary imports), requires the canonical file to be compiled exactly once, and rejects alternative generated friend attributes. It builds the solution into a unique empty OS-temporary `BaseOutputPath`, requires exactly one output for every protected assembly and the BCL-only verifier, and verifies only those exact outputs with metadata inspection. Fixed `bin/Release` files, a successful build exit code, timestamps, and assembly execution are never accepted as provenance or freshness proof. Diagnostics point back to this section.
+The fast `foundation:check` enforces repository graph and boundary rules, not friend-metadata origin. The mandatory `check:dotnet` performs locked restores and builds the complete solution in an empty per-run artifacts root. It then restores, evaluates, and builds the BCL-only verifier and every protected project separately, each under its own unique `--artifacts-path`. Before and after each build it binds the requested project path and expected assembly name to MSBuild's evaluated `TargetPath`, `OutputPath`, `IntermediateOutputPath`, and `ArtifactsPath`; outputs and intermediates must remain inside that project's unique root. The verifier reads only those exact `TargetPath` files, asserts their assembly identities, and compares the complete friend-name multiset with the two-name allowlist.
+
+Normal `bin` and `obj` files, filename searches in a shared tree, timestamps, and execution of protected assemblies are never accepted as evidence. A same-named attribute defined outside the BCL is not friend metadata. A missing target, changed or escaped build plan, duplicate expected identity or path, assembly-identity mismatch, or missing, duplicate, or unapproved friend name fails closed with diagnostics pointing to this section.
 
 ## Documentation Policy
 

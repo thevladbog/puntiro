@@ -159,7 +159,7 @@ export async function validateCiContract(rootUrl) {
       );
     }
     if (manifest.scripts?.['check:dotnet'] !== expectedDotnetCommand) {
-      errors.push('package.json check:dotnet must invoke the definitive fresh-output policy chain');
+      errors.push('package.json check:dotnet must invoke the definitive isolated-artifact identity policy chain');
     }
     if (Object.hasOwn(manifest.scripts ?? {}, 'internals:check')) {
       errors.push('package.json must not expose fixed-path internals:check');

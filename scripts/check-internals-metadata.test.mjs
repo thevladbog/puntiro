@@ -94,13 +94,94 @@ before(async () => {
   scratchAssemblies.set('imported-props', bypassAssembly);
   scratchAssemblies.set('xml-entity', bypassAssembly);
   scratchAssemblies.set('unicode-escape', bypassAssembly);
+
+  const missingAssembly = await prepareScratchAssembly('missing', {
+    assemblyInfo: `using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Puntiro.UnitTests")]
+`,
+  });
+  const missingBuild = runDotnet(
+    ['build', 'missing.csproj', '--configuration', 'Release'],
+    path.join(testRoot, 'missing'),
+  );
+  assert.equal(missingBuild.status, 0, `missing-friend scratch assembly must compile:\n${commandFailure(missingBuild)}`);
+  scratchAssemblies.set('missing', missingAssembly);
+
+  const fakeAssembly = await prepareScratchAssembly('fake', {
+    assemblyInfo: `[assembly: System.Runtime.CompilerServices.InternalsVisibleToAttribute("Puntiro.UnitTests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleToAttribute("Puntiro.IntegrationTests")]
+`,
+    files: {
+      'FakeFriendAttribute.cs': `namespace System.Runtime.CompilerServices;
+
+[global::System.AttributeUsage(global::System.AttributeTargets.Assembly, AllowMultiple = true)]
+public sealed class InternalsVisibleToAttribute(string assemblyName) : global::System.Attribute
+{
+    public string AssemblyName { get; } = assemblyName;
+}
+`,
+    },
+  });
+  const fakeBuild = runDotnet(
+    ['build', 'fake.csproj', '--configuration', 'Release'],
+    path.join(testRoot, 'fake'),
+  );
+  assert.equal(fakeBuild.status, 0, `fake-friend scratch assembly must compile:\n${commandFailure(fakeBuild)}`);
+  scratchAssemblies.set('fake', fakeAssembly);
+
+  const emitterRoot = path.join(testRoot, 'emitter');
+  await mkdir(emitterRoot, { recursive: true });
+  await writeFile(path.join(emitterRoot, 'global.json'), JSON.stringify({
+    sdk: {
+      version: '10.0.302',
+      rollForward: 'disable',
+      allowPrerelease: false,
+    },
+  }));
+  await writeFile(path.join(emitterRoot, 'emitter.csproj'), `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+`);
+  await writeFile(path.join(emitterRoot, 'Program.cs'), `using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+
+var assembly = new PersistedAssemblyBuilder(new AssemblyName("duplicate"), typeof(object).Assembly);
+var module = assembly.DefineDynamicModule("duplicate");
+var constructor = typeof(InternalsVisibleToAttribute).GetConstructor([typeof(string)])!;
+foreach (var friend in new[] { "Puntiro.UnitTests", "Puntiro.UnitTests", "Puntiro.IntegrationTests" })
+{
+    assembly.SetCustomAttribute(new CustomAttributeBuilder(constructor, [friend]));
+}
+module.DefineType("Marker", TypeAttributes.Public).CreateType();
+assembly.Save(args[0]);
+`);
+  const duplicateAssembly = path.join(testRoot, 'duplicate.dll');
+  const duplicateBuild = runDotnet(
+    ['run', '--project', 'emitter.csproj', '--configuration', 'Release', '--', duplicateAssembly],
+    emitterRoot,
+  );
+  assert.equal(
+    duplicateBuild.status,
+    0,
+    `duplicate-friend metadata emitter must succeed:\n${commandFailure(duplicateBuild)}`,
+  );
+  scratchAssemblies.set('duplicate', duplicateAssembly);
 });
 
 after(async () => {
   if (testRoot) await rm(testRoot, { force: true, recursive: true });
 });
 
-async function prepareScratchAssembly(name, { projectExtra = '', files = {} } = {}) {
+async function prepareScratchAssembly(name, {
+  projectExtra = '',
+  files = {},
+  assemblyInfo = approvedAssemblyInfo,
+} = {}) {
   const root = path.join(testRoot, name);
   await mkdir(path.join(root, 'Properties'), { recursive: true });
   await writeFile(path.join(root, 'global.json'), JSON.stringify({
@@ -117,7 +198,7 @@ async function prepareScratchAssembly(name, { projectExtra = '', files = {} } = 
   ${projectExtra}
 </Project>
 `);
-  await writeFile(path.join(root, 'Properties/AssemblyInfo.cs'), approvedAssemblyInfo);
+  await writeFile(path.join(root, 'Properties/AssemblyInfo.cs'), assemblyInfo);
   await writeFile(path.join(root, 'Marker.cs'), 'public static class Marker;\n');
 
   for (const [relativePath, content] of Object.entries(files)) {
@@ -129,8 +210,8 @@ async function prepareScratchAssembly(name, { projectExtra = '', files = {} } = 
   return path.join(root, `bin/Release/net10.0/${name}.dll`);
 }
 
-function verifyAssembly(assemblyPath) {
-  return runDotnet([verifierDll, assemblyPath], repositoryRoot);
+function verifyAssembly(assemblyPath, expectedAssemblyName = 'scratch') {
+  return runDotnet([verifierDll, expectedAssemblyName, assemblyPath], repositoryRoot);
 }
 
 function assertRejectedFriend(result, friendName) {
@@ -143,6 +224,47 @@ test('accepts an assembly with exactly the two approved friends', async () => {
   const result = verifyAssembly(scratchAssemblies.get('approved'));
 
   assert.equal(result.status, 0, commandFailure(result));
+});
+
+test('rejects a collision DLL whose assembly identity does not match the protected project', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('approved'), 'Protected.Project');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /expected Protected\.Project; received scratch/);
+  assert.match(result.stderr, /AGENTS\.md#internal-access-policy/);
+});
+
+test('rejects duplicate protected assembly inputs', async () => {
+  const assemblyPath = scratchAssemblies.get('approved');
+  const result = runDotnet([
+    verifierDll,
+    'scratch', assemblyPath,
+    'scratch', assemblyPath,
+  ], repositoryRoot);
+
+  assert.equal(result.status, 2, commandFailure(result));
+  assert.match(result.stderr, /duplicate expected assembly identity: scratch/);
+});
+
+test('rejects a protected assembly with a missing approved friend', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('missing'), 'missing');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /received \[Puntiro\.UnitTests\]/);
+});
+
+test('rejects duplicate approved friend metadata', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('duplicate'), 'duplicate');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /Puntiro\.UnitTests, Puntiro\.UnitTests/);
+});
+
+test('rejects same-named friend attributes that are not the BCL attribute', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('fake'), 'fake');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /received \[\]/);
 });
 
 test('rejects an unapproved friend injected through an arbitrary imported props file', async () => {

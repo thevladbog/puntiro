@@ -46,20 +46,6 @@ const requiredTestReferences = new Map([
     provisioningProject,
   ])],
 ]);
-const internalAccessProjects = new Set([
-  securityProject,
-  ...moduleProjects,
-  provisioningProject,
-]);
-const allowedInternalTestAssemblies = [
-  'Puntiro.UnitTests',
-  'Puntiro.IntegrationTests',
-];
-const canonicalInternalAccessContent = `using System.Runtime.CompilerServices;
-
-[assembly: InternalsVisibleTo("${allowedInternalTestAssemblies[0]}")]
-[assembly: InternalsVisibleTo("${allowedInternalTestAssemblies[1]}")]
-`;
 const projects = [
   ...leafProjects,
   ...moduleProjects,
@@ -68,11 +54,6 @@ const projects = [
   provisioningProject,
   ...testProjects,
 ];
-const internalAccessFiles = [...internalAccessProjects].map(project => path.posix.join(
-  path.posix.dirname(project),
-  'Properties/AssemblyInfo.cs',
-));
-
 const projectDirectories = projects.map(project => path.posix.dirname(project));
 const projectSourceExtensions = new Set(['.config', '.cs', '.csproj', '.json', '.props', '.targets', '.xaml', '.xml']);
 const buildOutputDirectories = new Set(['bin', 'obj']);
@@ -137,10 +118,6 @@ function sourceWithoutComments(relativePath, content) {
   return withoutXmlComments(content);
 }
 
-function canonicalInternalAccessFile(project) {
-  return path.posix.join(path.posix.dirname(project), 'Properties/AssemblyInfo.cs');
-}
-
 function normalizedLineEndings(content) {
   return content.replaceAll('\r\n', '\n');
 }
@@ -177,37 +154,10 @@ async function uiBoundaryFiles(root, relativeDirectory) {
   return files.flat();
 }
 
-async function internalAccessMsBuildFiles(root) {
-  const candidates = new Set(internalAccessProjects);
-  for (const project of internalAccessProjects) {
-    let directory = path.posix.dirname(project);
-    while (directory !== '.') {
-      candidates.add(path.posix.join(directory, 'Directory.Build.props'));
-      candidates.add(path.posix.join(directory, 'Directory.Build.targets'));
-      candidates.add(path.posix.join(directory, 'Directory.Packages.props'));
-      directory = path.posix.dirname(directory);
-    }
-  }
-  candidates.add('Directory.Build.props');
-  candidates.add('Directory.Build.targets');
-  candidates.add('Directory.Packages.props');
-
-  const existing = [];
-  for (const relativePath of candidates) {
-    try {
-      await access(path.join(root, relativePath));
-      existing.push(relativePath);
-    } catch {
-      // Optional inherited MSBuild files are absent in small fixtures.
-    }
-  }
-  return existing.sort((left, right) => left.localeCompare(right));
-}
-
 export async function validateFoundation(rootUrl) {
   const root = fileURLToPath(rootUrl);
   const errors = [];
-  const files = ['Puntiro.slnx', ...projects, ...internalAccessFiles];
+  const files = ['Puntiro.slnx', ...projects];
 
   for (const relativePath of files) {
     try {
@@ -332,30 +282,6 @@ export async function validateFoundation(rootUrl) {
 
   if (normalizedLineEndings(contents[assemblyPolicyProject]) !== canonicalAssemblyPolicyProjectContent) {
     errors.push(`${assemblyPolicyProject} must remain the canonical BCL-only verifier project`);
-  }
-
-  // IVT is deliberately reserved for one exact, reviewable declaration file per project.
-  // This fail-closed policy covers aliases and syntax forms without a C# parser.
-  for (const project of internalAccessProjects) {
-    const canonicalFile = canonicalInternalAccessFile(project);
-    const internalAccessSourceFiles = (await projectSourceFiles(root, path.posix.dirname(project)))
-      .filter(relativePath => relativePath.endsWith('.cs'));
-    for (const relativePath of internalAccessSourceFiles) {
-      const content = await readFile(path.join(root, relativePath), 'utf8');
-      if (relativePath === canonicalFile) {
-        if (normalizedLineEndings(content) !== canonicalInternalAccessContent) {
-          errors.push(`${relativePath} must contain exactly the canonical InternalsVisibleTo declarations (see AGENTS.md#internal-access-policy)`);
-        }
-      } else if (content.includes('InternalsVisibleTo')) {
-        errors.push(`${relativePath} must not contain InternalsVisibleTo outside ${canonicalFile} (see AGENTS.md#internal-access-policy)`);
-      }
-    }
-  }
-
-  for (const relativePath of await internalAccessMsBuildFiles(root)) {
-    if ((await readFile(path.join(root, relativePath), 'utf8')).includes('InternalsVisibleTo')) {
-      errors.push(`${relativePath} must not configure InternalsVisibleTo through MSBuild (see AGENTS.md#internal-access-policy)`);
-    }
   }
 
   if (!withoutXmlComments(contents[cloudProject]).includes('Microsoft.NET.Sdk.Web')) {

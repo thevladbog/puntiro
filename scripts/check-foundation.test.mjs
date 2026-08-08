@@ -201,109 +201,26 @@ test('test projects must not reference projects outside their approved graphs', 
   ]);
 });
 
-test('production internals are visible only to the named test assemblies', async t => {
+test('foundation source scan does not reserve InternalsVisibleTo text or require canonical origin', async t => {
   const { root, rootUrl } = await createFoundationFixture(t);
+  await rm(path.join(root, 'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs'));
   await writeFile(
-    path.join(root, 'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs'),
-    'using System.Runtime.CompilerServices;\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Unapproved.Tests")]\n',
-  );
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must contain exactly the canonical InternalsVisibleTo declarations (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('production internals are enforced across every source file', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
-  await writeFile(
-    path.join(root, 'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs'),
-    '[assembly: global::System.Runtime.CompilerServices.InternalsVisibleTo(@"Unapproved.Tests")]\n',
-  );
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('accepts the exact canonical InternalsVisibleTo declaration file', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
-  await writeFile(
-    path.join(root, 'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs'),
-    'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+    path.join(root, 'src/Puntiro.Modules.Identity/FriendPolicyNotes.cs'),
+    '// InternalsVisibleTo metadata is enforced against the built assembly.\nconst string policyName = "InternalsVisibleTo";\n',
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), []);
 });
 
-test('rejects dynamic assembly InternalsVisibleTo declarations', async t => {
+test('foundation source scan permits MSBuild friend declarations for definitive metadata validation', async t => {
   const { root, rootUrl } = await createFoundationFixture(t);
-  await writeFile(
-    path.join(root, 'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs'),
-    '[assembly: InternalsVisibleTo(GetTestAssemblyName())]\n',
-  );
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('rejects InternalsVisibleTo declarations in generated source directories', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
-  const sourcePath = path.join(root, 'src/Puntiro.Modules.Identity/generated/GeneratedAssemblyInfo.cs');
-  await mkdir(path.dirname(sourcePath), { recursive: true });
-  await writeFile(sourcePath, '[assembly: InternalsVisibleTo("Unapproved.Tests")]\n');
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/generated/GeneratedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('rejects aliased InternalsVisibleTo declarations outside the canonical file', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
-  await writeFile(
-    path.join(root, 'src/Puntiro.Modules.Identity/AliasedAssemblyInfo.cs'),
-    'using IVT = System.Runtime.CompilerServices.InternalsVisibleToAttribute;\n[assembly: IVT("Unapproved.Tests")]\n',
-  );
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/AliasedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('reserves InternalsVisibleTo outside the canonical file even in ordinary strings', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
-  await writeFile(
-    path.join(root, 'src/Puntiro.Modules.Identity/ReservedToken.cs'),
-    'const string policy = "InternalsVisibleTo";\n',
-  );
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/ReservedToken.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('rejects MSBuild InternalsVisibleTo configuration in a project file', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
+  await rm(path.join(root, 'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs'));
   await writeFile(
     path.join(root, 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj'),
-    '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /><AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute"><_Parameter1>Unapproved.Tests</_Parameter1></AssemblyAttribute></ItemGroup></Project>',
+    '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /><AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute"><_Parameter1>Puntiro.UnitTests</_Parameter1></AssemblyAttribute><AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute"><_Parameter1>Puntiro.IntegrationTests</_Parameter1></AssemblyAttribute></ItemGroup></Project>',
   );
 
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must not configure InternalsVisibleTo through MSBuild (see AGENTS.md#internal-access-policy)',
-  ]);
-});
-
-test('rejects inherited MSBuild InternalsVisibleTo configuration', async t => {
-  const { root, rootUrl } = await createFoundationFixture(t);
-  await writeFile(
-    path.join(root, 'Directory.Build.props'),
-    '<Project><ItemGroup><AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute" /></ItemGroup></Project>',
-  );
-
-  assert.deepEqual(await validateFoundation(rootUrl), [
-    'Directory.Build.props must not configure InternalsVisibleTo through MSBuild (see AGENTS.md#internal-access-policy)',
-  ]);
+  assert.deepEqual(await validateFoundation(rootUrl), []);
 });
 
 test('rejects deferred APIs in project source files', async t => {
