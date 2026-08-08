@@ -26,6 +26,7 @@
 ## Implementation Plans
 
 - [Repository foundation](superpowers/plans/2026-08-08-puntiro-repository-foundation.md)
+- [Cloud identity and tenancy](superpowers/plans/2026-08-08-puntiro-cloud-identity-tenancy.md)
 - [Implementation roadmap](superpowers/plans/2026-08-08-puntiro-implementation-roadmap.md)
 
 ## Validation Rule

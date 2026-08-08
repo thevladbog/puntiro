@@ -115,7 +115,8 @@ Scopes MVP:
 - `id` UUIDv7;
 - исходный email для отображения;
 - `normalized_email` с уникальным индексом;
-- `status` (`active`, `suspended`);
+- `status` (`provisioning`, `active`, `suspended`);
+- nullable `provisioning_organization_id`, который безопасно связывает незавершённый bootstrap с единственной организацией и очищается после активации;
 - timestamps и concurrency token.
 
 Email normalization выполняется одной версионируемой policy: surrounding whitespace удаляется, Unicode приводится к NFC, domain канонизируется через IDNA и lower-case, local part сравнивается invariant case-insensitive. Исходное display value не участвует в уникальности. Slug ограничивается lower-case ASCII `a-z`, `0-9` и одиночными дефисами после trim/collapse.
@@ -215,8 +216,11 @@ CLI запускается внутри deployment environment:
 
 - незавершённый pending TOTP и recovery batch заменяются, чтобы потерянный terminal output не блокировал bootstrap;
 - активная организация и owner не изменяются;
+- существующий account разрешено продолжить только при совпадении `provisioning_organization_id`; произвольный существующий global account CLI не перепривязывает и не изменяет;
 - несовпадающий email, чужая активная membership или неоднозначное состояние завершают команду без автоматического исправления данных;
 - не может существовать активная организация без активного owner.
+
+Тот же непубличный CLI предоставляет отдельную команду восстановления `reset-owner-totp`. Она доступна только для active owner, запрашивает пароль и неиспользованный recovery code через скрытый interactive input, показывает новый pending TOTP URI и сохраняет замену только после проверки первого нового TOTP. Успешная операция атомарно инвалидирует прежние TOTP/recovery credentials и отзывает все существующие sessions пользователя. HTTP self-service reset в этап не входит.
 
 ## 6. Admin authentication
 
@@ -402,12 +406,16 @@ Health endpoints:
 Версии повторно подтверждены 2026-08-08 через Context7, официальные package sources и GitHub Advisory Database:
 
 - `Microsoft.EntityFrameworkCore.Design` `10.0.10`;
+- `Microsoft.EntityFrameworkCore` `10.0.10`;
 - `Npgsql.EntityFrameworkCore.PostgreSQL` `10.0.3`;
+- `Microsoft.AspNetCore.OpenApi` `10.0.10`;
 - `Microsoft.AspNetCore.Mvc.Testing` `10.0.10`;
 - `Konscious.Security.Cryptography.Argon2` `1.3.1`;
 - `Microsoft.NET.Test.Sdk` `18.8.1`;
 - `xunit.v3` `3.2.2`;
 - `xunit.runner.visualstudio` `3.1.5`.
+
+Локальная и CI PostgreSQL фиксируется на текущем безопасном patch release линии 17: `postgres:17.10-bookworm`. EF migrations tool фиксируется в repository tool manifest как `dotnet-ef` `10.0.10`.
 
 План реализации обязан снова сверить версии, если начинается после даты документа или registry metadata изменились. Все package versions фиксируются точно в `Directory.Packages.props`; package references не содержат локальных версий.
 
@@ -425,6 +433,7 @@ TOTP реализуется малым внутренним RFC 6238 service п�
 - session idle/absolute expiry и revoke;
 - integration token format, HMAC verification, scopes и constant-time comparison boundary;
 - provisioning resume/conflict transitions.
+- owner TOTP recovery с password/recovery verification и отзывом прежних sessions;
 
 `TimeProvider` и CSPRNG boundary инъецируются, чтобы тесты не зависели от wall clock и случайных production secrets.
 
