@@ -21,7 +21,7 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 
 - Resolve current official documentation through Context7 before adding or updating a library.
 - Check official security advisories after Context7; Context7 does not replace vulnerability review.
-- Pin exact stable versions. Do not introduce ranges, prereleases, or floating SDKs.
+- Pin exact stable registry npm, NuGet, and tool versions. Only first-party `@puntiro/*` workspace packages may use `workspace:*`; do not introduce other ranges, prereleases, or floating SDKs.
 - Update lockfiles, SBOM inputs, documentation, and tests in the same change.
 
 ## Documentation Policy

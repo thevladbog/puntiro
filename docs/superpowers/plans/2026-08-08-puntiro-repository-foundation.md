@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Перед добавлением пакета сначала разрешить официальный Context7 library ID и прочитать актуальную документацию; затем проверить official security advisories.
-- Все npm/NuGet/tool versions exact; pre-release и floating ranges запрещены.
+- Все registry npm/NuGet/tool versions exact; pre-release и floating ranges запрещены. `workspace:*` разрешён только для first-party `@puntiro/*` workspace packages.
 - Существующие `packages/ui`, `packages/tokens`, Storybook tests и visual baselines не изменять без прямой необходимости foundation.
 - `AGENTS.md` создаётся до production-кода и обновляется вместе с реальными командами.
 - Documentation-as-code: README, docs map и ADR входят в тот же change set, что и foundation.
@@ -1076,8 +1076,8 @@ test('foundation CI separates repository and Windows compilation evidence', asyn
   const workflow = await readFile(new URL('../.github/workflows/foundation.yml', import.meta.url), 'utf8');
   assert.match(workflow, /name: Repository contracts/);
   assert.match(workflow, /name: Windows compile/);
-  assert.match(workflow, /node-version: 24\.18\.0/);
-  assert.match(workflow, /dotnet-version: 10\.0\.102/);
+  assert.match(workflow, /node-version: 24\.19\.0/);
+  assert.match(workflow, /dotnet-version: 10\.0\.302/);
   assert.match(workflow, /corepack pnpm install --frozen-lockfile/);
   assert.doesNotMatch(workflow, /Windows acceptance/);
 });
