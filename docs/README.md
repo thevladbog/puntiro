@@ -9,6 +9,7 @@
 ## Technical Architecture
 
 - [Approved technical architecture](superpowers/specs/2026-08-08-puntiro-technical-architecture-design.md)
+- [Cloud identity and tenancy design](superpowers/specs/2026-08-08-puntiro-cloud-identity-tenancy-design.md)
 
 ## Architecture Decisions
 
