@@ -6,7 +6,7 @@
 
 **Architecture:** Существующий pnpm workspace остаётся источником React UI и Storybook. Рядом создаётся .NET 10 solution с Cloud, Agent, Contracts и Windows Kiosk Shell boundaries; Node contract tests проверяют структуру до появления полноценных subsystem test projects. Foundation не реализует доменную логику, синхронизацию или печать.
 
-**Tech Stack:** Node.js 24.18.0 LTS, pnpm 11.17.0, TypeScript 6.0.3, React 19.2.8, Vite 8.1.5, .NET SDK 10.0.102, ASP.NET Core 10, WPF, Node built-in test runner, GitHub Actions.
+**Tech Stack:** Node.js 24.18.0 LTS, pnpm 11.17.0, TypeScript 6.0.3, React 19.2.8, Vite 8.1.5, .NET SDK 10.0.302, ASP.NET Core 10, WPF, Node built-in test runner, GitHub Actions.
 
 ## Global Constraints
 
@@ -292,6 +292,8 @@ git commit -m "docs: establish repository operating contract"
 
 Use Context7 to resolve official documentation for `.NET` and `Entity Framework Core`. Record the query date and selected stable lines in the commit body. Verify Node and pnpm through their official release/security feeds. Then run:
 
+Security revalidation note (2026-08-08): planned SDK `10.0.102` was rejected because Microsoft [CVE-2026-50646](https://github.com/dotnet/announcements/issues/418) affects Windows Desktop runtime `10.0.0` through `10.0.9`; the [.NET 10.0.10 release notes](https://github.com/dotnet/core/blob/main/release-notes/10.0/10.0.10/10.0.10.md) list SDK `10.0.302` as carrying the patched runtime.
+
 ```bash
 dotnet --info
 node --version
@@ -299,7 +301,7 @@ corepack pnpm --version
 corepack pnpm audit --prod
 ```
 
-Expected baseline pins for this plan: .NET SDK `10.0.102`, Node `24.18.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
+Expected baseline pins for this plan: .NET SDK `10.0.302`, Node `24.18.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
 
 - [ ] **Step 2: Write the failing dependency-policy test**
 
@@ -331,7 +333,7 @@ Create `global.json`:
 ```json
 {
   "sdk": {
-    "version": "10.0.102",
+    "version": "10.0.302",
     "rollForward": "disable",
     "allowPrerelease": false
   }
@@ -415,7 +417,7 @@ export async function validateDependencyPolicy(rootUrl) {
   }
 
   const globalJson = JSON.parse(await readFile(path.join(root, 'global.json'), 'utf8'));
-  if (globalJson.sdk?.version !== '10.0.102') errors.push('global.json must pin SDK 10.0.102');
+  if (globalJson.sdk?.version !== '10.0.302') errors.push('global.json must pin SDK 10.0.302');
   if (globalJson.sdk?.rollForward !== 'disable') errors.push('global.json must disable rollForward');
   if (globalJson.sdk?.allowPrerelease !== false) errors.push('global.json must reject prerelease SDKs');
 
@@ -1117,7 +1119,7 @@ jobs:
           node-version: 24.18.0
       - uses: actions/setup-dotnet@v5.0.0
         with:
-          dotnet-version: 10.0.102
+          dotnet-version: 10.0.302
       - run: corepack enable
       - run: corepack prepare pnpm@11.17.0 --activate
       - run: corepack pnpm install --frozen-lockfile
@@ -1132,7 +1134,7 @@ jobs:
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-dotnet@v5.0.0
         with:
-          dotnet-version: 10.0.102
+          dotnet-version: 10.0.302
       - run: dotnet restore Puntiro.slnx
       - run: dotnet build Puntiro.slnx --configuration Release --no-restore
 ```
@@ -1166,7 +1168,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Review the Windows compilation job**
 
-Confirm the YAML already contains the `windows-build` job using `windows-latest` and .NET `10.0.102`. It runs:
+Confirm the YAML already contains the `windows-build` job using `windows-latest` and .NET `10.0.302`. It runs:
 
 ```powershell
 dotnet restore Puntiro.slnx
