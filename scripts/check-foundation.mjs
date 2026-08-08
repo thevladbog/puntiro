@@ -6,6 +6,7 @@ const leafProjects = new Set([
   'src/Puntiro.Contracts/Puntiro.Contracts.csproj',
   'src/Puntiro.Security/Puntiro.Security.csproj',
 ]);
+const securityProject = 'src/Puntiro.Security/Puntiro.Security.csproj';
 const moduleProjects = new Set([
   'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
   'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
@@ -22,6 +23,31 @@ const testProjects = new Set([
   'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj',
   'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj',
 ]);
+const requiredTestReferences = new Map([
+  ['tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj', new Set([
+    securityProject,
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+    'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+    provisioningProject,
+  ])],
+  ['tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj', new Set([
+    'apps/cloud/Puntiro.Cloud.csproj',
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+    'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+    provisioningProject,
+  ])],
+]);
+const internalAccessProjects = new Set([
+  securityProject,
+  ...moduleProjects,
+  provisioningProject,
+]);
+const allowedInternalTestAssemblies = [
+  'Puntiro.UnitTests',
+  'Puntiro.IntegrationTests',
+];
 const projects = [
   ...leafProjects,
   ...moduleProjects,
@@ -29,6 +55,10 @@ const projects = [
   provisioningProject,
   ...testProjects,
 ];
+const internalAccessFiles = [...internalAccessProjects].map(project => path.posix.join(
+  path.posix.dirname(project),
+  'Properties/AssemblyInfo.cs',
+));
 
 const projectDirectories = projects.map(project => path.posix.dirname(project));
 const projectSourceExtensions = new Set(['.config', '.cs', '.csproj', '.json', '.props', '.targets', '.xaml', '.xml']);
@@ -93,6 +123,15 @@ function sourceWithoutComments(relativePath, content) {
   return withoutXmlComments(content);
 }
 
+function internalsVisibleTo(content) {
+  const targets = new Set();
+  const pattern = /\[\s*assembly\s*:\s*(?:[\w.]+\.)?InternalsVisibleTo(?:Attribute)?\s*\(\s*"([^"]+)"\s*\)\s*\]/g;
+  for (const match of sourceWithoutComments('AssemblyInfo.cs', content).matchAll(pattern)) {
+    targets.add(match[1]);
+  }
+  return targets;
+}
+
 async function projectSourceFiles(root, relativeDirectory) {
   const directory = path.join(root, relativeDirectory);
   const entries = await readdir(directory, { withFileTypes: true });
@@ -127,7 +166,7 @@ async function uiBoundaryFiles(root, relativeDirectory) {
 export async function validateFoundation(rootUrl) {
   const root = fileURLToPath(rootUrl);
   const errors = [];
-  const files = ['Puntiro.slnx', ...projects];
+  const files = ['Puntiro.slnx', ...projects, ...internalAccessFiles];
 
   for (const relativePath of files) {
     try {
@@ -141,6 +180,10 @@ export async function validateFoundation(rootUrl) {
   const contents = Object.fromEntries(await Promise.all(projects.map(async relativePath => [
     relativePath,
     await readFile(path.join(root, relativePath), 'utf8')
+  ])));
+  const assemblyInfos = Object.fromEntries(await Promise.all(internalAccessFiles.map(async relativePath => [
+    relativePath,
+    await readFile(path.join(root, relativePath), 'utf8'),
   ])));
   const solution = await readFile(path.join(root, 'Puntiro.slnx'), 'utf8');
   const listedProjects = solutionProjects(solution);
@@ -164,8 +207,12 @@ export async function validateFoundation(rootUrl) {
   }
 
   for (const relativePath of moduleProjects) {
-    for (const reference of projectReferences(relativePath, contents[relativePath])) {
-      if (reference === 'src/Puntiro.Security/Puntiro.Security.csproj') continue;
+    const references = projectReferences(relativePath, contents[relativePath]);
+    if (!references.includes(securityProject)) {
+      errors.push(`${relativePath} must reference required security project: ${securityProject}`);
+    }
+    for (const reference of references) {
+      if (reference === securityProject) continue;
       if (moduleProjects.has(reference)) {
         errors.push(`${relativePath} must not reference module: ${reference}`);
       } else if (reference.startsWith('apps/')) {
@@ -212,6 +259,14 @@ export async function validateFoundation(rootUrl) {
   }
 
   const provisioningReferences = projectReferences(provisioningProject, contents[provisioningProject]);
+  for (const requiredReference of [
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+  ]) {
+    if (!provisioningReferences.includes(requiredReference)) {
+      errors.push(`${provisioningProject} must reference required module: ${requiredReference}`);
+    }
+  }
   for (const reference of provisioningReferences) {
     if (
       reference === 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj'
@@ -221,6 +276,34 @@ export async function validateFoundation(rootUrl) {
       errors.push(`${provisioningProject} must not reference application project: ${reference}`);
     } else {
       errors.push(`${provisioningProject} must not reference project: ${reference}`);
+    }
+  }
+
+  for (const [relativePath, requiredReferences] of requiredTestReferences) {
+    const references = projectReferences(relativePath, contents[relativePath]);
+    for (const requiredReference of requiredReferences) {
+      if (!references.includes(requiredReference)) {
+        errors.push(`${relativePath} must reference required project: ${requiredReference}`);
+      }
+    }
+    for (const reference of references) {
+      if (!requiredReferences.has(reference)) {
+        errors.push(`${relativePath} must not reference project: ${reference}`);
+      }
+    }
+  }
+
+  for (const relativePath of internalAccessFiles) {
+    const targets = internalsVisibleTo(assemblyInfos[relativePath]);
+    for (const assemblyName of allowedInternalTestAssemblies) {
+      if (!targets.has(assemblyName)) {
+        errors.push(`${relativePath} must grant InternalsVisibleTo: ${assemblyName}`);
+      }
+    }
+    for (const assemblyName of targets) {
+      if (!allowedInternalTestAssemblies.includes(assemblyName)) {
+        errors.push(`${relativePath} must not grant InternalsVisibleTo: ${assemblyName}`);
+      }
     }
   }
 
