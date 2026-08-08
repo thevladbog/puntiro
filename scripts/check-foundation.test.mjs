@@ -26,16 +26,16 @@ const validFiles = {
   'src/Puntiro.Contracts/ProtocolVersion.cs': 'namespace Puntiro.Contracts;\n',
   'src/Puntiro.Security/Puntiro.Security.csproj': '<Project Sdk="Microsoft.NET.Sdk" />\n',
   'src/Puntiro.Security/SecurityModuleMarker.cs': 'namespace Puntiro.Security;\n',
-  'src/Puntiro.Security/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+  'src/Puntiro.Security/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
   'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /></ItemGroup></Project>\n',
   'src/Puntiro.Modules.Identity/IdentityModuleMarker.cs': 'namespace Puntiro.Modules.Identity;\n',
-  'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+  'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
   'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /></ItemGroup></Project>\n',
   'src/Puntiro.Modules.Tenancy/TenancyModuleMarker.cs': 'namespace Puntiro.Modules.Tenancy;\n',
-  'src/Puntiro.Modules.Tenancy/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+  'src/Puntiro.Modules.Tenancy/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
   'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /></ItemGroup></Project>\n',
   'src/Puntiro.Modules.Integrations/IntegrationsModuleMarker.cs': 'namespace Puntiro.Modules.Integrations;\n',
-  'src/Puntiro.Modules.Integrations/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+  'src/Puntiro.Modules.Integrations/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
   'apps/cloud/Puntiro.Cloud.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj" /></ItemGroup></Project>\n',
   'apps/cloud/Program.cs': 'var app = WebApplication.CreateBuilder().Build();\n',
   'apps/agent/Puntiro.Agent.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
@@ -44,7 +44,7 @@ const validFiles = {
   'apps/kiosk-shell/App.xaml': '<Application />\n',
   'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj': '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /></ItemGroup></Project>\n',
   'tools/Puntiro.Provisioning/Program.cs': 'Console.WriteLine("provisioning");\n',
-  'tools/Puntiro.Provisioning/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+  'tools/Puntiro.Provisioning/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
   'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../../src/Puntiro.Security/Puntiro.Security.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj" /><ProjectReference Include="../../tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj" /></ItemGroup></Project>\n',
   'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../../apps/cloud/Puntiro.Cloud.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj" /><ProjectReference Include="../../tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj" /></ItemGroup></Project>\n',
   'apps/admin/package.json': '{"private":true,"dependencies":{"@puntiro/ui":"workspace:*"}}\n',
@@ -194,8 +194,7 @@ test('production internals are visible only to the named test assemblies', async
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must grant InternalsVisibleTo: Puntiro.IntegrationTests',
-    'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must not grant InternalsVisibleTo: Unapproved.Tests',
+    'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must contain exactly the canonical InternalsVisibleTo declarations',
   ]);
 });
 
@@ -207,15 +206,15 @@ test('production internals are enforced across every source file', async t => {
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs must not grant InternalsVisibleTo: Unapproved.Tests',
+    'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
   ]);
 });
 
-test('accepts qualified InternalsVisibleTo attributes with normal and verbatim literals', async t => {
+test('accepts the exact canonical InternalsVisibleTo declaration file', async t => {
   const { root, rootUrl } = await createFoundationFixture(t);
   await writeFile(
     path.join(root, 'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs'),
-    '[assembly: global::System.Runtime.CompilerServices.InternalsVisibleTo(@"Puntiro.UnitTests")]\n[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+    'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), []);
@@ -229,7 +228,66 @@ test('rejects dynamic assembly InternalsVisibleTo declarations', async t => {
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs contains an unparseable assembly InternalsVisibleTo declaration',
+    'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+  ]);
+});
+
+test('rejects InternalsVisibleTo declarations in generated source directories', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  const sourcePath = path.join(root, 'src/Puntiro.Modules.Identity/generated/GeneratedAssemblyInfo.cs');
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await writeFile(sourcePath, '[assembly: InternalsVisibleTo("Unapproved.Tests")]\n');
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/generated/GeneratedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+  ]);
+});
+
+test('rejects aliased InternalsVisibleTo declarations outside the canonical file', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/AliasedAssemblyInfo.cs'),
+    'using IVT = System.Runtime.CompilerServices.InternalsVisibleToAttribute;\n[assembly: IVT("Unapproved.Tests")]\n',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/AliasedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+  ]);
+});
+
+test('reserves InternalsVisibleTo outside the canonical file even in ordinary strings', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/ReservedToken.cs'),
+    'const string policy = "InternalsVisibleTo";\n',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/ReservedToken.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+  ]);
+});
+
+test('rejects MSBuild InternalsVisibleTo configuration in a project file', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj'),
+    '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /><AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute"><_Parameter1>Unapproved.Tests</_Parameter1></AssemblyAttribute></ItemGroup></Project>',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must not configure InternalsVisibleTo through MSBuild',
+  ]);
+});
+
+test('rejects inherited MSBuild InternalsVisibleTo configuration', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'Directory.Build.props'),
+    '<Project><ItemGroup><AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute" /></ItemGroup></Project>',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'Directory.Build.props must not configure InternalsVisibleTo through MSBuild',
   ]);
 });
 
