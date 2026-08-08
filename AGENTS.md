@@ -28,6 +28,19 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 - Pin exact stable registry npm, NuGet, and tool versions. Only first-party `@puntiro/*` workspace packages may use `workspace:*`; do not introduce other ranges, prereleases, or floating SDKs.
 - Update lockfiles, SBOM inputs, documentation, and tests in the same change.
 
+## Internal Access Policy
+
+Production projects that expose internals to tests must keep the only two friend declarations in `<project>/Properties/AssemblyInfo.cs`, using this canonical block:
+
+```csharp
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Puntiro.UnitTests")]
+[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]
+```
+
+CRLF line endings are normalized and accepted; every other character, declaration order, blank line, and formatting detail must match the block. The `InternalsVisibleTo` token is reserved outside that canonical file, including in comments and ordinary strings. Do not configure friend access through `.csproj`, imported or inherited MSBuild `.props`/`.targets`, aliases, generated sources, escapes, or entities. The fast `foundation:check` enforces the reviewable source convention; the mandatory aggregate runs `check:dotnet`, which performs a fresh Release build and then `internals:check` to verify the effective custom-attribute metadata in every protected assembly. Build success alone is not proof of this policy.
+
 ## Documentation Policy
 
 - Update useful documentation in the same change as behavior.

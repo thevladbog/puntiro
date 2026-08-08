@@ -20,11 +20,11 @@ corepack pnpm dependencies:check
 corepack pnpm dependencies:audit
 corepack pnpm docs:check
 corepack pnpm foundation:check
-dotnet build Puntiro.slnx --configuration Release
+corepack pnpm check:dotnet
 corepack pnpm check:foundation
 corepack pnpm check
 ```
 
-`dependencies:check` enforces exact stable dependency and toolchain pins. `dependencies:audit` checks all npm dependencies at high severity and transitive NuGet packages for known vulnerabilities using the configured official sources. `docs:check` validates the repository documentation contract. `check:foundation` is the aggregate repository-foundation gate. `check` runs the existing design-system validation pipeline; these commands are automated evidence only and do not replace Windows or physical-hardware acceptance.
+`dependencies:check` enforces exact stable dependency and toolchain pins. `dependencies:audit` checks all npm dependencies at high severity and transitive NuGet packages for known vulnerabilities using the configured official sources. `docs:check` validates the repository documentation contract. `foundation:check` performs the fast source and graph checks. `check:dotnet` performs a fresh Release build and then verifies the final internal-access assembly metadata. `check:foundation` is the aggregate repository-foundation gate and includes both layers. `check` runs the existing design-system validation pipeline; these commands are automated evidence only and do not replace Windows or physical-hardware acceptance.
 
 The repository-level `.npmrc` fixes dependency resolution to the public npm registry. Keep `pnpm-lock.yaml` free of machine-specific registry URLs so the same frozen lockfile is verifiable locally and on GitHub Actions.

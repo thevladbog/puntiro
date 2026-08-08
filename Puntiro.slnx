@@ -16,6 +16,7 @@
     <Project Path="tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj" />
     <Project Path="tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj" />
   </Folder>
 </Solution>

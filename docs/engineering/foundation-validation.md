@@ -9,6 +9,7 @@
 - Admin shell typecheck/build: pass
 - Kiosk shell typecheck/build: pass
 - .NET solution build on development host: pass
+- Effective friend-assembly metadata after a fresh Release build: pass
 
 ## CI
 

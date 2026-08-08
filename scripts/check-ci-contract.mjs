@@ -18,6 +18,8 @@ const approvedActions = new Map([
 ]);
 
 const expectedAuditCommand = 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive';
+const expectedInternalsCommand = 'dotnet run --project tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj --configuration Release --no-build -- src/Puntiro.Security/bin/Release/net10.0/Puntiro.Security.dll src/Puntiro.Modules.Identity/bin/Release/net10.0/Puntiro.Modules.Identity.dll src/Puntiro.Modules.Tenancy/bin/Release/net10.0/Puntiro.Modules.Tenancy.dll src/Puntiro.Modules.Integrations/bin/Release/net10.0/Puntiro.Modules.Integrations.dll tools/Puntiro.Provisioning/bin/Release/net10.0/Puntiro.Provisioning.dll';
+const expectedDotnetCommand = 'dotnet build Puntiro.slnx --configuration Release && corepack pnpm internals:check';
 const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
 
 async function workflowFiles(root) {
@@ -158,6 +160,12 @@ export async function validateCiContract(rootUrl) {
       errors.push(
         'package.json dependencies:audit must audit all npm dependencies and transitive NuGet packages',
       );
+    }
+    if (manifest.scripts?.['check:dotnet'] !== expectedDotnetCommand) {
+      errors.push('package.json check:dotnet must build and then verify final assembly metadata');
+    }
+    if (manifest.scripts?.['internals:check'] !== expectedInternalsCommand) {
+      errors.push('package.json internals:check must inspect every protected Release assembly');
     }
     if (manifest.scripts?.['check:foundation'] !== expectedFoundationCommand) {
       errors.push('package.json check:foundation does not match the approved aggregate command');

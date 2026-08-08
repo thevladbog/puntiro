@@ -15,6 +15,7 @@ const projects = [
   'apps/cloud/Puntiro.Cloud.csproj',
   'apps/agent/Puntiro.Agent.csproj',
   'apps/kiosk-shell/Puntiro.KioskShell.csproj',
+  'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj',
   'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
   'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj',
   'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj'
@@ -42,6 +43,8 @@ const validFiles = {
   'apps/agent/Program.cs': 'Console.WriteLine("agent");\n',
   'apps/kiosk-shell/Puntiro.KioskShell.csproj': '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
   'apps/kiosk-shell/App.xaml': '<Application />\n',
+  'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj': '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n  </PropertyGroup>\n</Project>\n',
+  'tools/Puntiro.AssemblyPolicy/Program.cs': 'Console.WriteLine("assembly policy");\n',
   'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj': '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /></ItemGroup></Project>\n',
   'tools/Puntiro.Provisioning/Program.cs': 'Console.WriteLine("provisioning");\n',
   'tools/Puntiro.Provisioning/Properties/AssemblyInfo.cs': 'using System.Runtime.CompilerServices;\n\n[assembly: InternalsVisibleTo("Puntiro.UnitTests")]\n[assembly: InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
@@ -155,6 +158,18 @@ test('Provisioning must reference both required modules', async t => {
   ]);
 });
 
+test('assembly metadata verifier remains a BCL-only executable', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj'),
+    '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><PackageReference Include="Metadata.Helper" /></ItemGroup></Project>',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj must remain the canonical BCL-only verifier project',
+  ]);
+});
+
 test('test projects must reference their approved project graphs', async t => {
   const { root, rootUrl } = await createFoundationFixture(t);
   await writeFile(path.join(root, 'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />');
@@ -194,7 +209,7 @@ test('production internals are visible only to the named test assemblies', async
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must contain exactly the canonical InternalsVisibleTo declarations',
+    'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must contain exactly the canonical InternalsVisibleTo declarations (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -206,7 +221,7 @@ test('production internals are enforced across every source file', async t => {
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+    'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -228,7 +243,7 @@ test('rejects dynamic assembly InternalsVisibleTo declarations', async t => {
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+    'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -239,7 +254,7 @@ test('rejects InternalsVisibleTo declarations in generated source directories', 
   await writeFile(sourcePath, '[assembly: InternalsVisibleTo("Unapproved.Tests")]\n');
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/generated/GeneratedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+    'src/Puntiro.Modules.Identity/generated/GeneratedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -251,7 +266,7 @@ test('rejects aliased InternalsVisibleTo declarations outside the canonical file
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/AliasedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+    'src/Puntiro.Modules.Identity/AliasedAssemblyInfo.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -263,7 +278,7 @@ test('reserves InternalsVisibleTo outside the canonical file even in ordinary st
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/ReservedToken.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs',
+    'src/Puntiro.Modules.Identity/ReservedToken.cs must not contain InternalsVisibleTo outside src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -275,7 +290,7 @@ test('rejects MSBuild InternalsVisibleTo configuration in a project file', async
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must not configure InternalsVisibleTo through MSBuild',
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must not configure InternalsVisibleTo through MSBuild (see AGENTS.md#internal-access-policy)',
   ]);
 });
 
@@ -287,7 +302,7 @@ test('rejects inherited MSBuild InternalsVisibleTo configuration', async t => {
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'Directory.Build.props must not configure InternalsVisibleTo through MSBuild',
+    'Directory.Build.props must not configure InternalsVisibleTo through MSBuild (see AGENTS.md#internal-access-policy)',
   ]);
 });
 

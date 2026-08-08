@@ -42,6 +42,8 @@ jobs:
 const validManifest = {
   scripts: {
     'dependencies:audit': 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive',
+    'internals:check': 'dotnet run --project tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj --configuration Release --no-build -- src/Puntiro.Security/bin/Release/net10.0/Puntiro.Security.dll src/Puntiro.Modules.Identity/bin/Release/net10.0/Puntiro.Modules.Identity.dll src/Puntiro.Modules.Tenancy/bin/Release/net10.0/Puntiro.Modules.Tenancy.dll src/Puntiro.Modules.Integrations/bin/Release/net10.0/Puntiro.Modules.Integrations.dll tools/Puntiro.Provisioning/bin/Release/net10.0/Puntiro.Provisioning.dll',
+    'check:dotnet': 'dotnet build Puntiro.slnx --configuration Release && corepack pnpm internals:check',
     'check:foundation': 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet',
   },
 };
@@ -124,5 +126,17 @@ test('rejects an audit or aggregate command that drifts from the exact contract'
   assert.deepEqual((await validateCiContract(rootUrl)).filter(error => error.startsWith('package.json')), [
     'package.json dependencies:audit must audit all npm dependencies and transitive NuGet packages',
     'package.json check:foundation does not match the approved aggregate command',
+  ]);
+});
+
+test('rejects .NET checks that build without verifying final assembly metadata', async t => {
+  const manifest = structuredClone(validManifest);
+  manifest.scripts['check:dotnet'] = 'dotnet build Puntiro.slnx --configuration Release';
+  manifest.scripts['internals:check'] = 'node scripts/check-foundation.mjs';
+  const { rootUrl } = await withCiFixture(t, validWorkflow, manifest);
+
+  assert.deepEqual((await validateCiContract(rootUrl)).filter(error => error.startsWith('package.json')), [
+    'package.json check:dotnet must build and then verify final assembly metadata',
+    'package.json internals:check must inspect every protected Release assembly',
   ]);
 });

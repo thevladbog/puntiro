@@ -19,6 +19,13 @@ const applicationProjects = new Set([
   'apps/kiosk-shell/Puntiro.KioskShell.csproj',
 ]);
 const provisioningProject = 'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj';
+const assemblyPolicyProject = 'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj';
+const canonicalAssemblyPolicyProjectContent = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>
+`;
 const testProjects = new Set([
   'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj',
   'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj',
@@ -57,6 +64,7 @@ const projects = [
   ...leafProjects,
   ...moduleProjects,
   ...applicationProjects,
+  assemblyPolicyProject,
   provisioningProject,
   ...testProjects,
 ];
@@ -322,6 +330,10 @@ export async function validateFoundation(rootUrl) {
     }
   }
 
+  if (normalizedLineEndings(contents[assemblyPolicyProject]) !== canonicalAssemblyPolicyProjectContent) {
+    errors.push(`${assemblyPolicyProject} must remain the canonical BCL-only verifier project`);
+  }
+
   // IVT is deliberately reserved for one exact, reviewable declaration file per project.
   // This fail-closed policy covers aliases and syntax forms without a C# parser.
   for (const project of internalAccessProjects) {
@@ -332,17 +344,17 @@ export async function validateFoundation(rootUrl) {
       const content = await readFile(path.join(root, relativePath), 'utf8');
       if (relativePath === canonicalFile) {
         if (normalizedLineEndings(content) !== canonicalInternalAccessContent) {
-          errors.push(`${relativePath} must contain exactly the canonical InternalsVisibleTo declarations`);
+          errors.push(`${relativePath} must contain exactly the canonical InternalsVisibleTo declarations (see AGENTS.md#internal-access-policy)`);
         }
       } else if (content.includes('InternalsVisibleTo')) {
-        errors.push(`${relativePath} must not contain InternalsVisibleTo outside ${canonicalFile}`);
+        errors.push(`${relativePath} must not contain InternalsVisibleTo outside ${canonicalFile} (see AGENTS.md#internal-access-policy)`);
       }
     }
   }
 
   for (const relativePath of await internalAccessMsBuildFiles(root)) {
     if ((await readFile(path.join(root, relativePath), 'utf8')).includes('InternalsVisibleTo')) {
-      errors.push(`${relativePath} must not configure InternalsVisibleTo through MSBuild`);
+      errors.push(`${relativePath} must not configure InternalsVisibleTo through MSBuild (see AGENTS.md#internal-access-policy)`);
     }
   }
 
