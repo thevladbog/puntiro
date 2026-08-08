@@ -4,7 +4,7 @@
 
 - Documentation contracts: pass
 - Dependency policy: pass
-- Production dependency vulnerability audit: pass
+- All npm dependency vulnerability audit at high severity and transitive NuGet audit: pass
 - Repository contracts: pass
 - Admin shell typecheck/build: pass
 - Kiosk shell typecheck/build: pass

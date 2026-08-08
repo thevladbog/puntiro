@@ -79,6 +79,21 @@ test('rejects Contracts referencing an application project', async t => {
   ]);
 });
 
+test('rejects application projects referencing another application', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'apps/agent/Puntiro.Agent.csproj'),
+    `<Project Sdk="Microsoft.NET.Sdk"><ItemGroup>
+      <ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" />
+      <ProjectReference Include="../cloud/Puntiro.Cloud.csproj" />
+    </ItemGroup></Project>\n`
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'apps/agent/Puntiro.Agent.csproj must not reference application project: apps/cloud/Puntiro.Cloud.csproj'
+  ]);
+});
+
 test('rejects deferred APIs in project source files', async t => {
   const { root, rootUrl } = await createFoundationFixture(t);
   await writeFile(path.join(root, 'apps/cloud/Program.cs'), 'using Microsoft.Data.Sqlite;\n');
@@ -86,4 +101,36 @@ test('rejects deferred APIs in project source files', async t => {
   assert.deepEqual(await validateFoundation(rootUrl), [
     'apps/cloud/Program.cs contains deferred dependency Microsoft.Data.Sqlite'
   ]);
+});
+
+test('rejects forbidden UI boundary code outside App.tsx', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  const sourcePath = path.join(root, 'apps/admin/src/transport/client.ts');
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await writeFile(sourcePath, 'export const socket = new WebSocket("ws://device");\n');
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'apps/admin/src/transport/client.ts contains forbidden boundary marker WebSocket'
+  ]);
+});
+
+test('rejects forbidden UI dependencies in package manifests', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'apps/kiosk-web/package.json'),
+    '{"private":true,"dependencies":{"@puntiro/ui":"workspace:*","better-sqlite3":"1.2.3"}}\n'
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'apps/kiosk-web/package.json contains forbidden boundary marker sqlite'
+  ]);
+});
+
+test('ignores generated UI outputs while scanning boundaries', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  const generatedPath = path.join(root, 'apps/admin/dist/generated.js');
+  await mkdir(path.dirname(generatedPath), { recursive: true });
+  await writeFile(generatedPath, 'new WebSocket("ws://generated");\n');
+
+  assert.deepEqual(await validateFoundation(rootUrl), []);
 });

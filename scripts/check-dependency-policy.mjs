@@ -4,26 +4,102 @@ import path from 'node:path';
 
 const sections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const exactVersion = /^\d+\.\d+\.\d+$/;
+const nugetPolicyExtensions = new Set(['.csproj', '.props', '.targets']);
+const ignoredPolicyDirectories = new Set([
+  '.git',
+  '.superpowers',
+  'bin',
+  'coverage',
+  'dist',
+  'node_modules',
+  'obj',
+]);
 
 function attributeValue(attributes, name) {
   const match = attributes.match(new RegExp(`\\b${name}\\s*=\\s*(['"])(.*?)\\1`, 'is'));
   return match?.[2];
 }
 
-function validateNuGetVersions(centralPackages) {
-  const errors = [];
-  const xml = centralPackages.replace(/<!--[\s\S]*?-->/g, '');
-  const declarations = xml.matchAll(
-    /<PackageVersion\b([^>]*?)(?:\/\s*>|>([\s\S]*?)<\/PackageVersion\s*>)/gi,
-  );
+function withoutXmlComments(content) {
+  return content.replace(/<!--[\s\S]*?-->/g, '');
+}
 
-  for (const declaration of declarations) {
-    const attributes = declaration[1];
-    const body = declaration[2] ?? '';
-    const packageName = attributeValue(attributes, 'Include')
-      ?? attributeValue(attributes, 'Update')
-      ?? '<unknown>';
-    const childVersion = body.match(/<Version\b[^>]*>([\s\S]*?)<\/Version\s*>/i)?.[1];
+function elementDeclarations(content, elementName) {
+  const declarations = [];
+  const pattern = new RegExp(
+    `<${elementName}\\b([^>]*?)(?:\\/\\s*>|>([\\s\\S]*?)<\\/${elementName}\\s*>)`,
+    'gi',
+  );
+  for (const match of content.matchAll(pattern)) {
+    declarations.push({ attributes: match[1], body: match[2] ?? '' });
+  }
+  return declarations;
+}
+
+function childElement(body, elementName) {
+  return new RegExp(
+    `<${elementName}\\b[^>]*(?:\\/\\s*>|>[\\s\\S]*?<\\/${elementName}\\s*>)`,
+    'i',
+  ).test(body);
+}
+
+function childElementValue(body, elementName) {
+  return body.match(
+    new RegExp(`<${elementName}\\b[^>]*>([\\s\\S]*?)<\\/${elementName}\\s*>`, 'i'),
+  )?.[1];
+}
+
+function propertyValues(content, propertyName) {
+  const values = [];
+  const pattern = new RegExp(
+    `<${propertyName}\\b[^>]*>([\\s\\S]*?)<\\/${propertyName}\\s*>`,
+    'gi',
+  );
+  for (const match of content.matchAll(pattern)) values.push(match[1].trim().toLowerCase());
+  return values;
+}
+
+function declarationName(attributes) {
+  return attributeValue(attributes, 'Include')
+    ?? attributeValue(attributes, 'Update')
+    ?? '<unknown>';
+}
+
+function validatePackageReferenceVersions(relativePath, xml) {
+  const errors = [];
+  for (const { attributes, body } of elementDeclarations(xml, 'PackageReference')) {
+    const packageName = declarationName(attributes);
+    if (attributeValue(attributes, 'Version') !== undefined || childElement(body, 'Version')) {
+      errors.push(`${relativePath} PackageReference ${packageName} must not declare Version`);
+    }
+    if (
+      attributeValue(attributes, 'VersionOverride') !== undefined
+      || childElement(body, 'VersionOverride')
+    ) {
+      errors.push(`${relativePath} PackageReference ${packageName} must not declare VersionOverride`);
+    }
+  }
+  return errors;
+}
+
+function validateCentralNuGetPolicy(centralPackages) {
+  const errors = [];
+  const xml = withoutXmlComments(centralPackages);
+  const centrallyManaged = propertyValues(xml, 'ManagePackageVersionsCentrally');
+  const overridesEnabled = propertyValues(xml, 'CentralPackageVersionOverrideEnabled');
+
+  if (centrallyManaged.length !== 1 || centrallyManaged[0] !== 'true') {
+    errors.push('Directory.Packages.props must set ManagePackageVersionsCentrally to true');
+  }
+  if (overridesEnabled.length !== 1 || overridesEnabled[0] !== 'false') {
+    errors.push('Directory.Packages.props must set CentralPackageVersionOverrideEnabled to false');
+  }
+
+  const declarations = ['PackageVersion', 'GlobalPackageReference'].flatMap(elementName =>
+    elementDeclarations(xml, elementName));
+  for (const { attributes, body } of declarations) {
+    const packageName = declarationName(attributes);
+    const childVersion = childElementValue(body, 'Version');
     const version = (attributeValue(attributes, 'Version') ?? childVersion)?.trim();
 
     if (!version) {
@@ -33,7 +109,52 @@ function validateNuGetVersions(centralPackages) {
     }
   }
 
+  errors.push(...validatePackageReferenceVersions('Directory.Packages.props', xml));
+
   return errors;
+}
+
+function validateNonCentralNuGetPolicy(relativePath, content) {
+  const errors = [];
+  const xml = withoutXmlComments(content);
+  const centrallyManaged = propertyValues(xml, 'ManagePackageVersionsCentrally');
+  const overridesEnabled = propertyValues(xml, 'CentralPackageVersionOverrideEnabled');
+
+  if (centrallyManaged.some(value => value !== 'true')) {
+    errors.push(`${relativePath} must not disable central package version management`);
+  }
+  if (overridesEnabled.some(value => value !== 'false')) {
+    errors.push(`${relativePath} must not enable central package version overrides`);
+  }
+
+  errors.push(...validatePackageReferenceVersions(relativePath, xml));
+
+  for (const elementName of ['PackageVersion', 'GlobalPackageReference']) {
+    for (const { attributes } of elementDeclarations(xml, elementName)) {
+      errors.push(
+        `${relativePath} must not declare ${elementName} ${declarationName(attributes)} outside Directory.Packages.props`,
+      );
+    }
+  }
+
+  return errors;
+}
+
+async function nugetPolicyFiles(root, relativeDirectory = '') {
+  const directory = path.join(root, relativeDirectory);
+  const entries = (await readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const files = await Promise.all(entries.map(async entry => {
+    const relativePath = path.posix.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) {
+      if (ignoredPolicyDirectories.has(entry.name)) return [];
+      return nugetPolicyFiles(root, relativePath);
+    }
+    return nugetPolicyExtensions.has(path.extname(entry.name).toLowerCase())
+      ? [relativePath]
+      : [];
+  }));
+  return files.flat();
 }
 
 async function workspaceManifests(root) {
@@ -96,7 +217,13 @@ export async function validateDependencyPolicy(rootUrl) {
   if (globalJson.sdk?.allowPrerelease !== false) errors.push('global.json must reject prerelease SDKs');
 
   const centralPackages = await readFile(path.join(root, 'Directory.Packages.props'), 'utf8');
-  errors.push(...validateNuGetVersions(centralPackages));
+  errors.push(...validateCentralNuGetPolicy(centralPackages));
+
+  for (const relativePath of await nugetPolicyFiles(root)) {
+    if (relativePath === 'Directory.Packages.props') continue;
+    const content = await readFile(path.join(root, relativePath), 'utf8');
+    errors.push(...validateNonCentralNuGetPolicy(relativePath, content));
+  }
 
   return errors;
 }

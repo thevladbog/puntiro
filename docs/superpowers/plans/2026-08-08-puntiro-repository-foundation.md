@@ -288,6 +288,8 @@ git commit -m "docs: establish repository operating contract"
 - Consumes: root rules and `docs:check` from Task 1.
 - Produces: `node scripts/check-dependency-policy.mjs`, exact .NET SDK/compiler policy, central NuGet ownership.
 
+> **Historical RED/GREEN snapshot:** The Task 2 checker snippets below preserve the original implementation starting point and are not the current policy contract. The normative implementation is `scripts/check-dependency-policy.mjs` together with `scripts/check-dependency-policy.test.mjs`; they enforce the review-hardened central NuGet ownership rules and exact-version forms.
+
 - [ ] **Step 1: Revalidate versions before editing**
 
 Use Context7 to resolve official documentation for `.NET` and `Entity Framework Core`. Record the query date and selected stable lines in the commit body. Verify Node and pnpm through their official release/security feeds. Then run:
@@ -300,7 +302,7 @@ Node security revalidation note (2026-08-08): planned Node `24.18.0` was rejecte
 dotnet --info
 node --version
 corepack pnpm --version
-corepack pnpm audit --prod
+corepack pnpm audit --audit-level high
 ```
 
 Expected baseline pins for this plan: .NET SDK `10.0.302`, Node `24.19.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
@@ -364,6 +366,7 @@ Create `Directory.Packages.props`:
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
 </Project>
 ```
@@ -1157,7 +1160,7 @@ Add to root scripts:
 ```json
 "test:repository": "node --test scripts/check-docs.test.mjs scripts/check-dependency-policy.test.mjs scripts/check-foundation.test.mjs scripts/product-shells.test.mjs scripts/ci-contract.test.mjs",
 "check:dotnet": "dotnet build Puntiro.slnx --configuration Release",
-"dependencies:audit": "corepack pnpm audit --prod --audit-level high && dotnet package list Puntiro.slnx --vulnerable --include-transitive",
+"dependencies:audit": "corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive",
 "check:foundation": "corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet"
 ```
 

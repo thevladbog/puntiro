@@ -6,6 +6,13 @@ import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { validateDependencyPolicy } from './check-dependency-policy.mjs';
 
+const validCentralPackages = `<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+  </PropertyGroup>
+</Project>`;
+
 async function withPolicyFixture(options, run) {
   const root = await mkdtemp(path.join(tmpdir(), 'puntiro-dependency-policy-'));
   try {
@@ -26,13 +33,19 @@ async function withPolicyFixture(options, run) {
     }));
     await writeFile(
       path.join(root, 'Directory.Packages.props'),
-      options.centralPackages ?? '<Project />',
+      options.centralPackages ?? validCentralPackages,
     );
 
     for (const workspace of options.workspaces ?? []) {
       const directory = path.join(root, workspace.directory);
       await mkdir(directory, { recursive: true });
       await writeFile(path.join(directory, 'package.json'), JSON.stringify(workspace.manifest));
+    }
+
+    for (const [relativePath, content] of Object.entries(options.nugetFiles ?? {})) {
+      const target = path.join(root, relativePath);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, content);
     }
 
     await run(pathToFileURL(`${root}${path.sep}`));
@@ -89,19 +102,117 @@ test('workspace protocol is limited to first-party Puntiro workspace packages', 
 test('NuGet policy validates alternate declarations and rejects missing or non-exact versions', async () => {
   await withPolicyFixture({
     centralPackages: `<Project>
+      <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+      </PropertyGroup>
       <ItemGroup>
         <PackageVersion Version='1.2.3' Include='AttributeOrder' />
         <PackageVersion Update="Multiline"
                         Version="2.3.4" />
         <PackageVersion Include="ChildVersion"><Version>3.4.5</Version></PackageVersion>
+        <GlobalPackageReference Include="GlobalAttribute" Version="4.5.6" />
+        <GlobalPackageReference Include="GlobalChild"><Version>5.6.7</Version></GlobalPackageReference>
         <PackageVersion Include="MissingVersion" />
         <PackageVersion Update='RangeVersion'><Version>[1.0.0,2.0.0)</Version></PackageVersion>
+        <GlobalPackageReference Include="FloatingGlobal" Version="6.*" />
       </ItemGroup>
     </Project>`,
   }, async (rootUrl) => {
     assert.deepEqual(await validateDependencyPolicy(rootUrl), [
       'NuGet package MissingVersion is missing an exact version',
       'NuGet package RangeVersion is not exact: [1.0.0,2.0.0)',
+      'NuGet package FloatingGlobal is not exact: 6.*',
+    ]);
+  });
+});
+
+test('central NuGet ownership properties cannot be weakened', async () => {
+  await withPolicyFixture({
+    centralPackages: `<Project>
+      <PropertyGroup>
+        <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+        <CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
+      </PropertyGroup>
+    </Project>`,
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      'Directory.Packages.props must set ManagePackageVersionsCentrally to true',
+      'Directory.Packages.props must set CentralPackageVersionOverrideEnabled to false',
+    ]);
+  });
+});
+
+test('PackageReference versions are rejected inside Directory.Packages.props', async () => {
+  await withPolicyFixture({
+    centralPackages: `<Project>
+      <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+      </PropertyGroup>
+      <ItemGroup>
+        <PackageReference Include="CentralVersion" Version="1.2.3" />
+        <PackageReference Include="CentralOverride"><VersionOverride>2.3.4</VersionOverride></PackageReference>
+      </ItemGroup>
+    </Project>`,
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      'Directory.Packages.props PackageReference CentralVersion must not declare Version',
+      'Directory.Packages.props PackageReference CentralOverride must not declare VersionOverride',
+    ]);
+  });
+});
+
+test('project files cannot disable central management or enable version overrides', async () => {
+  await withPolicyFixture({
+    nugetFiles: {
+      'apps/cloud/Puntiro.Cloud.csproj': `<Project>
+        <PropertyGroup>
+          <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+          <CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
+        </PropertyGroup>
+      </Project>`,
+    },
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      'apps/cloud/Puntiro.Cloud.csproj must not disable central package version management',
+      'apps/cloud/Puntiro.Cloud.csproj must not enable central package version overrides',
+    ]);
+  });
+});
+
+test('PackageReference declarations cannot carry local versions', async () => {
+  await withPolicyFixture({
+    nugetFiles: {
+      'apps/cloud/Puntiro.Cloud.csproj': `<Project><ItemGroup>
+        <PackageReference Include="AttributeVersion" Version="1.2.3" />
+        <PackageReference Include="AttributeOverride" VersionOverride="2.3.4" />
+        <PackageReference Include="ChildVersion"><Version>3.4.5</Version></PackageReference>
+        <PackageReference Include="ChildOverride"><VersionOverride>4.5.6</VersionOverride></PackageReference>
+      </ItemGroup></Project>`,
+    },
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      'apps/cloud/Puntiro.Cloud.csproj PackageReference AttributeVersion must not declare Version',
+      'apps/cloud/Puntiro.Cloud.csproj PackageReference AttributeOverride must not declare VersionOverride',
+      'apps/cloud/Puntiro.Cloud.csproj PackageReference ChildVersion must not declare Version',
+      'apps/cloud/Puntiro.Cloud.csproj PackageReference ChildOverride must not declare VersionOverride',
+    ]);
+  });
+});
+
+test('central and global package declarations stay in Directory.Packages.props', async () => {
+  await withPolicyFixture({
+    nugetFiles: {
+      'Directory.Build.props': `<Project><ItemGroup>
+        <PackageVersion Include="MisplacedCentral" Version="1.2.3" />
+        <GlobalPackageReference Include="MisplacedGlobal" Version="2.3.4" />
+      </ItemGroup></Project>`,
+    },
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      'Directory.Build.props must not declare PackageVersion MisplacedCentral outside Directory.Packages.props',
+      'Directory.Build.props must not declare GlobalPackageReference MisplacedGlobal outside Directory.Packages.props',
     ]);
   });
 });

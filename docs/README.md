@@ -18,6 +18,10 @@
 
 - [Development bootstrap](runbooks/development-bootstrap.md)
 
+## Engineering Validation
+
+- [Repository foundation validation](engineering/foundation-validation.md)
+
 ## Implementation Plans
 
 - [Repository foundation](superpowers/plans/2026-08-08-puntiro-repository-foundation.md)

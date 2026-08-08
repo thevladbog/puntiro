@@ -12,6 +12,29 @@ const projects = [
 const projectDirectories = projects.map(project => path.posix.dirname(project));
 const projectSourceExtensions = new Set(['.config', '.cs', '.csproj', '.json', '.props', '.targets', '.xaml', '.xml']);
 const forbidden = ['Microsoft.Data.Sqlite', 'System.Net.Sockets', 'System.Printing', 'Microsoft.Web.WebView2'];
+const uiBoundaryExtensions = new Set([
+  '.cjs',
+  '.config',
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.jsx',
+  '.mjs',
+  '.ts',
+  '.tsx',
+  '.yaml',
+  '.yml',
+]);
+const generatedUiDirectories = new Set([
+  '.turbo',
+  '.vite',
+  'build',
+  'coverage',
+  'dist',
+  'node_modules',
+  'out',
+]);
 
 function withoutXmlComments(content) {
   return content.replace(/<!--[\s\S]*?-->/g, '');
@@ -63,6 +86,23 @@ async function projectSourceFiles(root, relativeDirectory) {
   return files.flat();
 }
 
+async function uiBoundaryFiles(root, relativeDirectory) {
+  const directory = path.join(root, relativeDirectory);
+  const entries = (await readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const files = await Promise.all(entries.map(async entry => {
+    const relativePath = path.posix.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) {
+      if (generatedUiDirectories.has(entry.name)) return [];
+      return uiBoundaryFiles(root, relativePath);
+    }
+    const extension = path.extname(entry.name).toLowerCase();
+    const isEnvironmentConfig = entry.name === '.env' || entry.name.startsWith('.env.');
+    return uiBoundaryExtensions.has(extension) || isEnvironmentConfig ? [relativePath] : [];
+  }));
+  return files.flat();
+}
+
 export async function validateFoundation(rootUrl) {
   const root = fileURLToPath(rootUrl);
   const errors = [];
@@ -95,6 +135,14 @@ export async function validateFoundation(rootUrl) {
     const references = projectReferences(relativePath, contents[relativePath]);
     if (!references.includes('src/Puntiro.Contracts/Puntiro.Contracts.csproj')) {
       errors.push(`${relativePath} must reference Puntiro.Contracts`);
+    }
+    for (const reference of references) {
+      if (reference === 'src/Puntiro.Contracts/Puntiro.Contracts.csproj') continue;
+      if (reference.startsWith('apps/')) {
+        errors.push(`${relativePath} must not reference application project: ${reference}`);
+      } else {
+        errors.push(`${relativePath} must not reference project: ${reference}`);
+      }
     }
   }
   for (const reference of projectReferences(projects[0], contents[projects[0]])) {
@@ -141,8 +189,14 @@ export async function validateFoundation(rootUrl) {
       if (app === 'kiosk-web' && !source.includes('mode="touch"')) {
         errors.push('kiosk-web must use touch interaction mode');
       }
-      for (const marker of forbiddenUiMarkers) {
-        if (source.includes(marker)) errors.push(`${app} contains forbidden boundary marker ${marker}`);
+      const boundaryFiles = await uiBoundaryFiles(root, path.posix.join('apps', app));
+      for (const relativePath of boundaryFiles) {
+        const content = await readFile(path.join(root, relativePath), 'utf8');
+        for (const marker of forbiddenUiMarkers) {
+          if (content.includes(marker)) {
+            errors.push(`${relativePath} contains forbidden boundary marker ${marker}`);
+          }
+        }
       }
     } catch {
       errors.push(`Missing product shell files for ${app}`);

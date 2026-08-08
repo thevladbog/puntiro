@@ -7,6 +7,7 @@ const requiredFiles = [
   'README.md',
   'docs/README.md',
   'docs/adr/0001-modular-monolith-agent.md',
+  'docs/engineering/foundation-validation.md',
   'docs/runbooks/development-bootstrap.md',
   'docs/superpowers/specs/2026-08-08-puntiro-technical-architecture-design.md'
 ];
@@ -38,6 +39,15 @@ export async function validateRepositoryDocs(rootUrl) {
     const agents = await readFile(path.join(root, 'AGENTS.md'), 'utf8');
     for (const heading of agentsHeadings) {
       if (!agents.includes(heading)) errors.push(`AGENTS.md missing heading: ${heading}`);
+    }
+  } catch {
+    // Missing-file diagnostic is already emitted above.
+  }
+
+  try {
+    const docsMap = await readFile(path.join(root, 'docs/README.md'), 'utf8');
+    if (!/\]\(engineering\/foundation-validation\.md(?:#[^)]+)?\)/.test(docsMap)) {
+      errors.push('docs/README.md must link engineering/foundation-validation.md');
     }
   } catch {
     // Missing-file diagnostic is already emitted above.
