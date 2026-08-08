@@ -56,6 +56,17 @@ test('root Node engine is pinned exactly', async () => {
   });
 });
 
+test('development bootstrap requires the exact root Node engine', async () => {
+  const rootManifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const runbook = await readFile(
+    new URL('../docs/runbooks/development-bootstrap.md', import.meta.url),
+    'utf8',
+  );
+  const escapedEngine = rootManifest.engines.node.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  assert.match(runbook, new RegExp(`^- Node\\.js ${escapedEngine}$`, 'm'));
+});
+
 test('workspace protocol is limited to first-party Puntiro workspace packages', async () => {
   await withPolicyFixture({
     rootManifest: {

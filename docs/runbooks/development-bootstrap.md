@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 24
+- Node.js 24.19.0
 - Corepack with pnpm 11.17.0, as pinned by the repository
 - .NET SDK available for the planned cloud and Windows components
 - Local Chromium installed by Playwright for browser validation
