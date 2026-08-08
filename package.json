@@ -13,6 +13,7 @@
     "check": "corepack pnpm run tokens:check && corepack pnpm run typecheck && corepack pnpm run lint && corepack pnpm run test && corepack pnpm run test:storybook && corepack pnpm run storybook:build && corepack pnpm run test:visual",
     "dependencies:check": "node scripts/check-dependency-policy.mjs",
     "docs:check": "node scripts/check-docs.mjs",
+    "foundation:check": "node scripts/check-foundation.mjs",
     "typecheck": "corepack pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run --project=unit",

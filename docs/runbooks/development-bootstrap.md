@@ -18,6 +18,8 @@ dotnet --info
 corepack pnpm install --frozen-lockfile
 corepack pnpm dependencies:check
 corepack pnpm docs:check
+corepack pnpm foundation:check
+dotnet build Puntiro.slnx --configuration Release
 corepack pnpm check
 ```
 
