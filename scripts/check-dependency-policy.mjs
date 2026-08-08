@@ -7,7 +7,9 @@ const exactVersion = /^\d+\.\d+\.\d+$/;
 const nugetPolicyExtensions = new Set(['.csproj', '.props', '.targets']);
 const ignoredPolicyDirectories = new Set([
   '.git',
+  '.pnpm-store',
   '.superpowers',
+  '.worktrees',
   'bin',
   'coverage',
   'dist',

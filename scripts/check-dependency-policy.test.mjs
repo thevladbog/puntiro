@@ -217,6 +217,21 @@ test('central and global package declarations stay in Directory.Packages.props',
   });
 });
 
+for (const [ignoredDirectory, relativeFile] of [
+  ['.worktrees', '.worktrees/other-branch/apps/cloud/Puntiro.Cloud.csproj'],
+  ['.pnpm-store', '.pnpm-store/v10/files/invalid/Directory.Build.props'],
+]) {
+  test(`ignores NuGet declarations under local ${ignoredDirectory} trees`, async () => {
+    await withPolicyFixture({
+      nugetFiles: {
+        [relativeFile]: '<Project><ItemGroup><PackageReference Include="Ignored" Version="9.9.9" /></ItemGroup></Project>',
+      },
+    }, async (rootUrl) => {
+      assert.deepEqual(await validateDependencyPolicy(rootUrl), []);
+    });
+  });
+}
+
 test('planned CI assertions use approved Node and .NET pins', async () => {
   const plan = await readFile(
     new URL('../docs/superpowers/plans/2026-08-08-puntiro-repository-foundation.md', import.meta.url),
