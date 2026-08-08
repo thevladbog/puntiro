@@ -109,6 +109,81 @@ infra/
 
 TypeScript и C# не импортируют доменные модели друг друга. Межъязыковые границы описываются OpenAPI и версионируемым IPC-контрактом.
 
+### 4.4. Политика зависимостей
+
+Проект использует последние стабильные и поддерживаемые версии, совместимые с выбранной LTS-платформой. `latest` не является плавающим диапазоном в production: после выбора версия фиксируется точно и обновляется отдельным проверяемым изменением.
+
+Перед добавлением или обновлением framework, SDK, NuGet- или npm-пакета исполнитель обязан:
+
+1. разрешить официальный library identifier и прочитать актуальную документацию через Context7;
+2. проверить текущую stable/LTS-линию и совместимость с целевым runtime;
+3. проверить официальные security advisories и vulnerability database package registry;
+4. прочитать release notes и breaking changes;
+5. выбрать последнюю безопасную совместимую версию, а не механически наибольший номер;
+6. зафиксировать причину выбора в PR или dependency note, если выбран не последний stable release.
+
+Для .NET используется Central Package Management и точные версии в `Directory.Packages.props`. Для pnpm сохраняются `saveExact`, frozen lockfile и точная версия package manager. Pre-release, nightly и неподдерживаемые версии запрещены без отдельного ADR.
+
+CI проверяет прямые и транзитивные уязвимости NuGet/npm, license policy, lockfile reproducibility и формирует SBOM. Автоматический dependency bot может открывать обновления, но merge разрешён только после CI; major updates проходят явное архитектурное review.
+
+Context7 является обязательным источником актуальной документации библиотек, но не заменяет security advisory и проверку реального lockfile. Например, Context7 подтверждает соответствие EF Core 10 платформе .NET 10 и рекомендует применять production migrations отдельным bundle/SQL script, а не `MigrateAsync()` при старте приложения. Этот подход закреплён в разделе развёртывания.
+
+### 4.5. Documentation as code
+
+Полезная документация создаётся вместе с первым рабочим контуром и обновляется в том же change set, что и поведение. Документ не должен описывать функцию как готовую до появления проверяемой реализации.
+
+Обязательные артефакты:
+
+- root `README.md` с назначением, локальным запуском и картой документации;
+- module README: ответственность, public contracts, owned data, зависимости и failure modes;
+- OpenAPI с рабочими примерами запросов и `application/problem+json`;
+- IPC protocol reference и compatibility policy;
+- ADR для решений, которые трудно и дорого отменить;
+- runbooks: deploy/rollback, backup/restore, привязка киоска, регистрация принтера, `unknown` print result и revoked device;
+- troubleshooting без токенов, payloads и персональных данных;
+- release checklist с отдельными automated и physical acceptance gates.
+
+CI проверяет внутренние ссылки, формат ключевых документов, актуальность generated API reference и отсутствие незаполненных `TODO/TBD` в release documentation.
+
+### 4.6. `AGENTS.md`
+
+Корневой `AGENTS.md` создаётся первым изменением repository foundation до production-кода. Он является обязательным контрактом для агентов и содержит:
+
+- назначение продукта и архитектурные инварианты;
+- карту каталогов и владельцев данных;
+- разрешённые зависимости между модулями;
+- точные команды bootstrap, build, test, lint, migrations и package audit;
+- правило Context7 и dependency policy;
+- требование обновлять документацию вместе с поведением;
+- правила работы с generated files, migrations и exact payload fixtures;
+- запрет прямой печати из UI и обхода Agent;
+- no-scroll/touch требования киоска;
+- разделение browser/CI acceptance и Windows/hardware acceptance;
+- правила секретов, redaction и безопасных логов;
+- правила работы с dirty worktree и недеструктивного Git.
+
+При появлении действительно отличающихся правил допускаются вложенные `AGENTS.md` в `apps/agent`, `apps/cloud`, `apps/kiosk-web` или `infra`. Локальный файл содержит только отклонения и дополнения, не копирует корневой документ. Изменение команды, структуры или gate требует обновить соответствующий `AGENTS.md` в том же commit/PR.
+
+### 4.7. Репозиторные skills
+
+Репозиторный skill создаётся, когда повторяющаяся процедура:
+
+- специфична для Puntiro;
+- состоит из нескольких точных шагов или проверок;
+- плохо помещается в короткое правило `AGENTS.md`;
+- уже встречалась минимум дважды либо является критичным редким runbook, где ошибка опасна.
+
+Skills хранятся в `.agents/skills/<skill-name>/SKILL.md`; необходимые scripts, fixtures и templates располагаются рядом. Skill не содержит секретов, не дублирует общую документацию и имеет проверяемый пример использования.
+
+Вероятные кандидаты после появления реальных процедур:
+
+- `puntiro-printer-hardware-acceptance`;
+- `puntiro-label-template-conformance`;
+- `puntiro-timeweb-release-and-rollback`;
+- `puntiro-offline-recovery-drill`.
+
+Создавать пустые skills заранее запрещено. Решение принимается по фактической повторяемости или риску процесса.
+
 ## 5. Общая схема
 
 ```mermaid
@@ -516,7 +591,7 @@ CORS разрешает только production admin origin. Device и integrat
 
 ### 16.4. Deployment
 
-CI собирает versioned containers и подписанный MSI. Cloud deployment сначала выполняет backward-compatible migration, затем заменяет application container и проверяет readiness. Destructive schema changes выполняются отдельным последующим release по expand/contract pattern.
+CI собирает versioned containers и подписанный MSI. Cloud deployment сначала выполняет проверенный EF Core migration bundle или reviewed SQL script, затем заменяет application container и проверяет readiness. Runtime-вызов `MigrateAsync()` в production запрещён. Destructive schema changes выполняются отдельным последующим release по expand/contract pattern.
 
 ## 17. Наблюдаемость
 
@@ -623,12 +698,16 @@ Windows CI отдельно проверяет установку service, Named
 - Windows Queue и Ethernet используют общий PrintTransport contract.
 - Cloud разворачивается в Timeweb без Kubernetes и vendor-specific runtime API.
 - Automated и physical acceptance имеют раздельные статусы.
+- Каждое изменение поведения сопровождается полезной документацией в том же change set.
+- Версии зависимостей точно зафиксированы и выбраны после Context7/security review.
+- Root `AGENTS.md` существует, соответствует реальным командам и прочитан до начала работы.
+- Репозиторные skills создаются только для доказанно повторяемых или критичных процедур.
 
 ## 20. Следующий этап
 
 После пользовательского ревью этого документа создаётся отдельный implementation plan. План должен декомпозировать работу минимум на:
 
-1. solution/repository foundation;
+1. solution/repository foundation, root `AGENTS.md`, documentation map и dependency policy;
 2. Cloud identity, tenancy и integration API;
 3. shipment/template domain;
 4. device binding и sync protocol;
