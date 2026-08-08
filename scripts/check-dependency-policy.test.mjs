@@ -59,6 +59,14 @@ test('toolchains and package manifests use exact stable versions', async () => {
   assert.deepEqual(errors, []);
 });
 
+test('npm registry and lockfile are portable to GitHub runners', async () => {
+  const npmrc = await readFile(new URL('../.npmrc', import.meta.url), 'utf8').catch(() => '');
+  const lockfile = await readFile(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8');
+
+  assert.match(npmrc, /^registry=https:\/\/registry\.npmjs\.org\/$/m);
+  assert.doesNotMatch(lockfile, /npm\.yandex-team\.ru/);
+});
+
 test('root Node engine is pinned exactly', async () => {
   await withPolicyFixture({
     rootManifest: { engines: { node: '>=24 <25' } },
