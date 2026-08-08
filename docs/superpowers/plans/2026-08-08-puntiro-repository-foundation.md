@@ -6,7 +6,7 @@
 
 **Architecture:** Существующий pnpm workspace остаётся источником React UI и Storybook. Рядом создаётся .NET 10 solution с Cloud, Agent, Contracts и Windows Kiosk Shell boundaries; Node contract tests проверяют структуру до появления полноценных subsystem test projects. Foundation не реализует доменную логику, синхронизацию или печать.
 
-**Tech Stack:** Node.js 24.18.0 LTS, pnpm 11.17.0, TypeScript 6.0.3, React 19.2.8, Vite 8.1.5, .NET SDK 10.0.302, ASP.NET Core 10, WPF, Node built-in test runner, GitHub Actions.
+**Tech Stack:** Node.js 24.19.0 LTS, pnpm 11.17.0, TypeScript 6.0.3, React 19.2.8, Vite 8.1.5, .NET SDK 10.0.302, ASP.NET Core 10, WPF, Node built-in test runner, GitHub Actions.
 
 ## Global Constraints
 
@@ -294,6 +294,8 @@ Use Context7 to resolve official documentation for `.NET` and `Entity Framework 
 
 Security revalidation note (2026-08-08): planned SDK `10.0.102` was rejected because Microsoft [CVE-2026-50646](https://github.com/dotnet/announcements/issues/418) affects Windows Desktop runtime `10.0.0` through `10.0.9`; the [.NET 10.0.10 release notes](https://github.com/dotnet/core/blob/main/release-notes/10.0/10.0.10/10.0.10.md) list SDK `10.0.302` as carrying the patched runtime.
 
+Node security revalidation note (2026-08-08): planned Node `24.18.0` was rejected because the official [July 29 security bulletin](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases) fixes multiple high-severity 24.x issues in `24.18.1`; the official [distribution index](https://nodejs.org/dist/index.json) lists `24.19.0` (2026-08-03) as the current Krypton LTS.
+
 ```bash
 dotnet --info
 node --version
@@ -301,7 +303,7 @@ corepack pnpm --version
 corepack pnpm audit --prod
 ```
 
-Expected baseline pins for this plan: .NET SDK `10.0.302`, Node `24.18.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
+Expected baseline pins for this plan: .NET SDK `10.0.302`, Node `24.19.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
 
 - [ ] **Step 2: Write the failing dependency-policy test**
 
@@ -1116,7 +1118,7 @@ jobs:
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-node@v4.4.0
         with:
-          node-version: 24.18.0
+          node-version: 24.19.0
       - uses: actions/setup-dotnet@v5.0.0
         with:
           dotnet-version: 10.0.302
