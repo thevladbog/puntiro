@@ -146,9 +146,15 @@ public sealed class InternalsVisibleToAttribute(string assemblyName) : global::S
   </PropertyGroup>
 </Project>
 `);
-  await writeFile(path.join(emitterRoot, 'Program.cs'), `using System.Reflection;
+  await writeFile(path.join(emitterRoot, 'Program.cs'), `using System;
+using System.IO;
+using System.Reflection;
 using System.Reflection.Emit;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 var assembly = new PersistedAssemblyBuilder(new AssemblyName("duplicate"), typeof(object).Assembly);
 var module = assembly.DefineDynamicModule("duplicate");
@@ -159,10 +165,112 @@ foreach (var friend in new[] { "Puntiro.UnitTests", "Puntiro.UnitTests", "Puntir
 }
 module.DefineType("Marker", TypeAttributes.Public).CreateType();
 assembly.Save(args[0]);
+
+EmitForged(
+    args[1],
+    "forged-scope",
+    "System.Runtime",
+    "0000000000000000",
+    ".ctor",
+    [0x20, 0x01, 0x01, 0x0e]);
+EmitForged(
+    args[2],
+    "forged-member",
+    "System.Runtime",
+    "b03f5f7f11d50a3a",
+    "NotAConstructor",
+    [0x20, 0x01, 0x01, 0x0e]);
+EmitForged(
+    args[3],
+    "forged-signature",
+    "System.Runtime",
+    "b03f5f7f11d50a3a",
+    ".ctor",
+    [0x20, 0x00, 0x01]);
+
+static void EmitForged(
+    string outputPath,
+    string assemblyName,
+    string scopeName,
+    string publicKeyToken,
+    string memberName,
+    byte[] memberSignature)
+{
+    var metadata = new MetadataBuilder();
+    metadata.AddModule(
+        0,
+        metadata.GetOrAddString($"{assemblyName}.dll"),
+        metadata.GetOrAddGuid(Guid.NewGuid()),
+        default,
+        default);
+    metadata.AddAssembly(
+        metadata.GetOrAddString(assemblyName),
+        new Version(1, 0, 0, 0),
+        default,
+        default,
+        0,
+        AssemblyHashAlgorithm.None);
+    metadata.AddTypeDefinition(
+        TypeAttributes.NotPublic,
+        default,
+        metadata.GetOrAddString("<Module>"),
+        default,
+        MetadataTokens.FieldDefinitionHandle(1),
+        MetadataTokens.MethodDefinitionHandle(1));
+
+    var scope = metadata.AddAssemblyReference(
+        metadata.GetOrAddString(scopeName),
+        new Version(10, 0, 0, 0),
+        default,
+        metadata.GetOrAddBlob(Convert.FromHexString(publicKeyToken)),
+        0,
+        default);
+    var attributeType = metadata.AddTypeReference(
+        scope,
+        metadata.GetOrAddString("System.Runtime.CompilerServices"),
+        metadata.GetOrAddString("InternalsVisibleToAttribute"));
+    var constructor = metadata.AddMemberReference(
+        attributeType,
+        metadata.GetOrAddString(memberName),
+        metadata.GetOrAddBlob(memberSignature));
+
+    foreach (var friend in new[] { "Puntiro.UnitTests", "Puntiro.IntegrationTests" })
+    {
+        var value = new BlobBuilder();
+        value.WriteUInt16(1);
+        var friendBytes = Encoding.UTF8.GetBytes(friend);
+        value.WriteByte((byte)friendBytes.Length);
+        value.WriteBytes(friendBytes);
+        value.WriteUInt16(0);
+        metadata.AddCustomAttribute(
+            MetadataTokens.EntityHandle(TableIndex.Assembly, 1),
+            constructor,
+            metadata.GetOrAddBlob(value));
+    }
+
+    var peBuilder = new ManagedPEBuilder(
+        new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage | Characteristics.Dll),
+        new MetadataRootBuilder(metadata),
+        new BlobBuilder(),
+        flags: CorFlags.ILOnly);
+    var peImage = new BlobBuilder();
+    peBuilder.Serialize(peImage);
+    using var output = File.Create(outputPath);
+    peImage.WriteContentTo(output);
+}
 `);
   const duplicateAssembly = path.join(testRoot, 'duplicate.dll');
+  const forgedScopeAssembly = path.join(testRoot, 'forged-scope.dll');
+  const forgedMemberAssembly = path.join(testRoot, 'forged-member.dll');
+  const forgedSignatureAssembly = path.join(testRoot, 'forged-signature.dll');
   const duplicateBuild = runDotnet(
-    ['run', '--project', 'emitter.csproj', '--configuration', 'Release', '--', duplicateAssembly],
+    [
+      'run', '--project', 'emitter.csproj', '--configuration', 'Release', '--',
+      duplicateAssembly,
+      forgedScopeAssembly,
+      forgedMemberAssembly,
+      forgedSignatureAssembly,
+    ],
     emitterRoot,
   );
   assert.equal(
@@ -171,6 +279,9 @@ assembly.Save(args[0]);
     `duplicate-friend metadata emitter must succeed:\n${commandFailure(duplicateBuild)}`,
   );
   scratchAssemblies.set('duplicate', duplicateAssembly);
+  scratchAssemblies.set('forged-scope', forgedScopeAssembly);
+  scratchAssemblies.set('forged-member', forgedMemberAssembly);
+  scratchAssemblies.set('forged-signature', forgedSignatureAssembly);
 });
 
 after(async () => {
@@ -262,6 +373,27 @@ test('rejects duplicate approved friend metadata', async () => {
 
 test('rejects same-named friend attributes that are not the BCL attribute', async () => {
   const result = verifyAssembly(scratchAssemblies.get('fake'), 'fake');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /received \[\]/);
+});
+
+test('rejects a forged BCL assembly scope with the wrong public key token', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('forged-scope'), 'forged-scope');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /received \[\]/);
+});
+
+test('rejects a BCL-scoped member reference that is not a constructor', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('forged-member'), 'forged-member');
+
+  assert.equal(result.status, 1, commandFailure(result));
+  assert.match(result.stderr, /received \[\]/);
+});
+
+test('rejects a BCL-scoped constructor with the wrong signature', async () => {
+  const result = verifyAssembly(scratchAssemblies.get('forged-signature'), 'forged-signature');
 
   assert.equal(result.status, 1, commandFailure(result));
   assert.match(result.stderr, /received \[\]/);

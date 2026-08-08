@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,6 +30,76 @@ const defaultProtectedProjects = [
   {
     projectPath: 'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
     assemblyName: 'Puntiro.Provisioning',
+  },
+];
+const defaultProjectGraph = [
+  {
+    projectPath: 'src/Puntiro.Contracts/Puntiro.Contracts.csproj',
+    references: [],
+  },
+  {
+    projectPath: 'src/Puntiro.Security/Puntiro.Security.csproj',
+    references: [],
+  },
+  {
+    projectPath: 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    references: ['src/Puntiro.Security/Puntiro.Security.csproj'],
+  },
+  {
+    projectPath: 'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+    references: ['src/Puntiro.Security/Puntiro.Security.csproj'],
+  },
+  {
+    projectPath: 'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+    references: ['src/Puntiro.Security/Puntiro.Security.csproj'],
+  },
+  {
+    projectPath: 'apps/cloud/Puntiro.Cloud.csproj',
+    references: [
+      'src/Puntiro.Contracts/Puntiro.Contracts.csproj',
+      'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+      'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+      'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+    ],
+  },
+  {
+    projectPath: 'apps/agent/Puntiro.Agent.csproj',
+    references: ['src/Puntiro.Contracts/Puntiro.Contracts.csproj'],
+  },
+  {
+    projectPath: 'apps/kiosk-shell/Puntiro.KioskShell.csproj',
+    references: ['src/Puntiro.Contracts/Puntiro.Contracts.csproj'],
+  },
+  {
+    projectPath: 'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj',
+    references: [],
+  },
+  {
+    projectPath: 'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
+    references: [
+      'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+      'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+    ],
+  },
+  {
+    projectPath: 'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj',
+    references: [
+      'src/Puntiro.Security/Puntiro.Security.csproj',
+      'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+      'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+      'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+      'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
+    ],
+  },
+  {
+    projectPath: 'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj',
+    references: [
+      'apps/cloud/Puntiro.Cloud.csproj',
+      'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+      'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+      'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+      'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
+    ],
   },
 ];
 
@@ -97,6 +167,211 @@ function parseEvaluatedProperties(stdout, projectPath) {
   } catch (error) {
     throw new Error(`${projectPath}: cannot parse evaluated MSBuild properties: ${error.message}`);
   }
+}
+
+function parseEvaluatedProject(stdout, projectPath) {
+  try {
+    const payload = JSON.parse(stdout.trim());
+    if (!payload?.Properties || typeof payload.Properties !== 'object') {
+      throw new Error('missing Properties object');
+    }
+    if (payload.Items !== undefined && typeof payload.Items !== 'object') {
+      throw new Error('invalid Items object');
+    }
+    return payload;
+  } catch (error) {
+    throw new Error(`${projectPath}: cannot parse evaluated MSBuild graph: ${error.message}`);
+  }
+}
+
+function displayProjectPath(repositoryRoot, projectPath) {
+  const relative = path.relative(comparablePath(repositoryRoot), comparablePath(projectPath));
+  if (relative !== ''
+    && relative !== '..'
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative)) {
+    return relative.split(path.sep).join('/');
+  }
+  return path.resolve(projectPath);
+}
+
+function validateProjectGraphDefinition(projectGraph, repositoryRoot) {
+  const projects = new Map();
+  for (const entry of projectGraph) {
+    if (!entry.projectPath || !Array.isArray(entry.references)) {
+      throw new Error(`project graph entries require projectPath and references (see ${policyReference})`);
+    }
+    const projectPath = comparablePath(path.resolve(repositoryRoot, entry.projectPath));
+    if (projects.has(projectPath)) {
+      throw new Error(`duplicate project graph path: ${entry.projectPath} (see ${policyReference})`);
+    }
+    const references = entry.references.map(reference =>
+      comparablePath(path.resolve(repositoryRoot, reference)));
+    if (new Set(references).size !== references.length) {
+      throw new Error(`duplicate expected ProjectReference in ${entry.projectPath} (see ${policyReference})`);
+    }
+    projects.set(projectPath, references);
+  }
+
+  for (const [projectPath, references] of projects) {
+    for (const reference of references) {
+      if (!projects.has(reference)) {
+        throw new Error(
+          `${displayProjectPath(repositoryRoot, projectPath)} expects an unmanaged graph project: ` +
+          `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+        );
+      }
+    }
+  }
+
+  const visited = new Set();
+  const visiting = new Set();
+  function visit(projectPath) {
+    if (visited.has(projectPath)) return;
+    if (visiting.has(projectPath)) {
+      throw new Error(
+        `effective project graph policy contains a dependency cycle at ` +
+        `${displayProjectPath(repositoryRoot, projectPath)} (see ${policyReference})`,
+      );
+    }
+    visiting.add(projectPath);
+    for (const reference of projects.get(projectPath)) visit(reference);
+    visiting.delete(projectPath);
+    visited.add(projectPath);
+  }
+  for (const projectPath of projects.keys()) visit(projectPath);
+  return projects;
+}
+
+function transitiveReferences(projectPath, projectGraph) {
+  const references = new Set();
+  function visit(reference) {
+    if (references.has(reference)) return;
+    references.add(reference);
+    for (const nestedReference of projectGraph.get(reference)) visit(nestedReference);
+  }
+  for (const reference of projectGraph.get(projectPath)) visit(reference);
+  return references;
+}
+
+export async function validateEffectiveProjectGraph({
+  dotnet = process.env.PUNTIRO_DOTNET_BIN ?? 'dotnet',
+  repositoryRoot = defaultRepositoryRoot,
+  projectGraph = defaultProjectGraph,
+  logger = console,
+} = {}) {
+  const expectedGraph = validateProjectGraphDefinition(projectGraph, repositoryRoot);
+  const errors = [];
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-graph-'));
+  logger.info?.('Evaluating the effective MSBuild ProjectReference graph.');
+
+  try {
+    let projectIndex = 0;
+    for (const [expectedProjectPath, expectedReferences] of expectedGraph) {
+      const projectPath = displayProjectPath(repositoryRoot, expectedProjectPath);
+      const artifactsRoot = path.join(
+        temporaryRoot,
+        `${String(projectIndex).padStart(2, '0')}-${path.basename(projectPath, '.csproj')}`,
+      );
+      projectIndex += 1;
+      runDotnet({
+        dotnet,
+        repositoryRoot,
+        args: [
+          'restore',
+          projectPath,
+          '--use-lock-file',
+          '--force-evaluate',
+          '--artifacts-path', artifactsRoot,
+          `-property:NuGetLockFilePath=${path.join(artifactsRoot, 'packages.lock.json')}`,
+          '-property:RestoreLockedMode=false',
+        ],
+      });
+      const result = runDotnet({
+        dotnet,
+        repositoryRoot,
+        args: [
+          'msbuild',
+          projectPath,
+          '-property:Configuration=Release',
+          `-property:ArtifactsPath=${artifactsRoot}`,
+          '-property:UseArtifactsOutput=true',
+          '-target:PrepareProjectReferences',
+          '-getProperty:MSBuildProjectFullPath,MSBuildToolsPath',
+          '-getItem:ProjectReference',
+        ],
+      });
+      const evaluated = parseEvaluatedProject(result.stdout, projectPath);
+      const evaluatedProjectPath = evaluated.Properties.MSBuildProjectFullPath;
+      if (typeof evaluatedProjectPath !== 'string'
+        || comparablePath(evaluatedProjectPath) !== expectedProjectPath) {
+        errors.push(
+          `${projectPath}: evaluated MSBuildProjectFullPath does not match the requested graph project ` +
+          `(see ${policyReference})`,
+        );
+        continue;
+      }
+      const msbuildToolsPath = evaluated.Properties.MSBuildToolsPath;
+      if (typeof msbuildToolsPath !== 'string' || !path.isAbsolute(msbuildToolsPath)) {
+        errors.push(
+          `${projectPath}: evaluated MSBuildToolsPath must be absolute (see ${policyReference})`,
+        );
+        continue;
+      }
+
+      const actualReferences = [];
+      const allowedTransitiveReferences = transitiveReferences(expectedProjectPath, expectedGraph);
+      for (const item of evaluated.Items?.ProjectReference ?? []) {
+        if (typeof item?.FullPath !== 'string' || !path.isAbsolute(item.FullPath)) {
+          errors.push(
+            `${projectPath}: effective ProjectReference lacks an absolute FullPath ` +
+            `(see ${policyReference})`,
+          );
+          continue;
+        }
+        const reference = comparablePath(item.FullPath);
+        const definingProject = item.DefiningProjectFullPath;
+        const isSdkGeneratedTransitive = typeof definingProject === 'string'
+          && path.isAbsolute(definingProject)
+          && isStrictlyInside(msbuildToolsPath, definingProject);
+        if (isSdkGeneratedTransitive) {
+          if (!allowedTransitiveReferences.has(reference)) {
+            errors.push(
+              `${projectPath}: unexpected SDK-generated transitive ProjectReference ` +
+              `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+            );
+          }
+          continue;
+        }
+        actualReferences.push(reference);
+      }
+      const actualSet = new Set(actualReferences);
+      if (actualSet.size !== actualReferences.length) {
+        errors.push(`${projectPath}: duplicate effective ProjectReference (see ${policyReference})`);
+      }
+      const expectedSet = new Set(expectedReferences);
+      for (const reference of expectedReferences) {
+        if (!actualSet.has(reference)) {
+          errors.push(
+            `${projectPath}: missing effective ProjectReference ` +
+            `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+          );
+        }
+      }
+      for (const reference of actualSet) {
+        if (!expectedSet.has(reference)) {
+          errors.push(
+            `${projectPath}: unexpected effective ProjectReference ` +
+            `${displayProjectPath(repositoryRoot, reference)} (see ${policyReference})`,
+          );
+        }
+      }
+    }
+  } finally {
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
+
+  if (errors.length > 0) throw new Error(errors.join('\n'));
 }
 
 function requireEvaluatedAbsolutePath(properties, propertyName, projectPath) {
@@ -221,14 +496,66 @@ function evaluateProjectPlan({
   });
 }
 
-async function requireProducedTarget(plan) {
-  let target;
-  try {
-    target = await stat(plan.targetPath);
-  } catch {
-    target = undefined;
+async function rejectLinkedArtifactTree(artifactPath) {
+  const entry = await lstat(artifactPath);
+  if (entry.isSymbolicLink()) {
+    throw new Error(
+      `${artifactPath}: isolated artifacts must not contain a symbolic link or reparse point ` +
+      `(see ${policyReference})`,
+    );
   }
-  if (!target?.isFile()) {
+  if (!entry.isDirectory()) return;
+  for (const child of await readdir(artifactPath)) {
+    await rejectLinkedArtifactTree(path.join(artifactPath, child));
+  }
+}
+
+async function requireRealArtifactPath(artifactsRoot, artifactPath, kind) {
+  const resolvedRoot = await realpath(artifactsRoot);
+  const resolvedArtifact = await realpath(artifactPath);
+  if (comparablePath(resolvedRoot) !== comparablePath(artifactsRoot)
+    || comparablePath(resolvedArtifact) !== comparablePath(artifactPath)) {
+    throw new Error(
+      `${artifactPath}: isolated ${kind} resolved through a symbolic link or reparse point ` +
+      `(see ${policyReference})`,
+    );
+  }
+  if (comparablePath(resolvedArtifact) !== comparablePath(resolvedRoot)
+    && !isStrictlyInside(resolvedRoot, resolvedArtifact)) {
+    throw new Error(
+      `${artifactPath}: isolated ${kind} escaped its real artifacts root ` +
+      `(see ${policyReference})`,
+    );
+  }
+  return lstat(artifactPath);
+}
+
+async function requireSafeArtifactTree(artifactsRoot) {
+  await rejectLinkedArtifactTree(artifactsRoot);
+  const root = await requireRealArtifactPath(artifactsRoot, artifactsRoot, 'root');
+  if (!root.isDirectory()) {
+    throw new Error(`${artifactsRoot}: isolated artifacts root must be a directory (see ${policyReference})`);
+  }
+}
+
+async function requireProducedTarget(plan) {
+  try {
+    await lstat(plan.targetPath);
+  } catch {
+    throw new Error(
+      `${plan.projectPath}: isolated build did not produce expected target ${plan.targetPath} ` +
+      `(see ${policyReference})`,
+    );
+  }
+  await requireSafeArtifactTree(plan.artifactsRoot);
+  const output = await requireRealArtifactPath(plan.artifactsRoot, plan.outputPath, 'output path');
+  const intermediate = await requireRealArtifactPath(
+    plan.artifactsRoot,
+    plan.intermediateOutputPath,
+    'intermediate path',
+  );
+  const target = await requireRealArtifactPath(plan.artifactsRoot, plan.targetPath, 'target');
+  if (!output.isDirectory() || !intermediate.isDirectory() || !target.isFile()) {
     throw new Error(
       `${plan.projectPath}: isolated build did not produce expected target ${plan.targetPath} ` +
       `(see ${policyReference})`,
@@ -290,7 +617,7 @@ export async function buildProjectInIsolatedArtifacts({
   return planAfterBuild.targetPath;
 }
 
-function buildSolutionInIsolatedArtifacts({
+async function buildSolutionInIsolatedArtifacts({
   dotnet,
   repositoryRoot,
   solutionPath,
@@ -316,6 +643,7 @@ function buildSolutionInIsolatedArtifacts({
       '--artifacts-path', artifactsRoot,
     ],
   });
+  await requireSafeArtifactTree(artifactsRoot);
 }
 
 function safeArtifactLabel(index, assemblyName) {
@@ -348,13 +676,15 @@ export async function runDotnetPolicy({
   solutionPath = 'Puntiro.slnx',
   protectedProjects = defaultProtectedProjects,
   verifierProject = defaultVerifierProject,
+  projectGraph = defaultProjectGraph,
   logger = console,
 } = {}) {
   validateProtectedProjects(protectedProjects, repositoryRoot);
+  await validateEffectiveProjectGraph({ dotnet, repositoryRoot, projectGraph, logger });
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-check-'));
 
   try {
-    buildSolutionInIsolatedArtifacts({
+    await buildSolutionInIsolatedArtifacts({
       dotnet,
       repositoryRoot,
       solutionPath,

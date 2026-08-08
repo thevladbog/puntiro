@@ -1,5 +1,7 @@
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
 
 return AssemblyPolicyVerifier.Run(args);
 
@@ -7,11 +9,13 @@ internal static class AssemblyPolicyVerifier
 {
     private const string AttributeTypeName = "System.Runtime.CompilerServices.InternalsVisibleToAttribute";
     private const string PolicyReference = "AGENTS.md#internal-access-policy";
-    private static readonly HashSet<string> BclAttributeAssemblies = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, TrustedAssemblyIdentity> BclAttributeAssemblies =
+        new(StringComparer.Ordinal)
     {
-        "System.Private.CoreLib",
-        "System.Runtime",
+        ["System.Private.CoreLib"] = new(new Version(10, 0, 0, 0), "7cec85d7bea7798e"),
+        ["System.Runtime"] = new(new Version(10, 0, 0, 0), "b03f5f7f11d50a3a"),
     };
+    private static readonly byte[] FriendConstructorSignature = [0x20, 0x01, 0x01, 0x0e];
     private static readonly string[] ApprovedFriends =
     [
         "Puntiro.IntegrationTests",
@@ -131,7 +135,14 @@ internal static class AssemblyPolicyVerifier
             return false;
         }
 
-        var parent = metadata.GetMemberReference((MemberReferenceHandle)constructor).Parent;
+        var member = metadata.GetMemberReference((MemberReferenceHandle)constructor);
+        if (metadata.GetString(member.Name) != ".ctor"
+            || !metadata.GetBlobBytes(member.Signature).SequenceEqual(FriendConstructorSignature))
+        {
+            return false;
+        }
+
+        var parent = member.Parent;
         if (parent.Kind != HandleKind.TypeReference)
         {
             return false;
@@ -145,7 +156,32 @@ internal static class AssemblyPolicyVerifier
         }
 
         var assembly = metadata.GetAssemblyReference((AssemblyReferenceHandle)attributeType.ResolutionScope);
-        return BclAttributeAssemblies.Contains(metadata.GetString(assembly.Name));
+        if (!BclAttributeAssemblies.TryGetValue(
+            metadata.GetString(assembly.Name),
+            out var trustedIdentity))
+        {
+            return false;
+        }
+
+        return assembly.Version == trustedIdentity.Version
+            && (assembly.Flags == 0 || assembly.Flags == AssemblyFlags.PublicKey)
+            && metadata.GetString(assembly.Culture).Length == 0
+            && ReadPublicKeyToken(metadata, assembly)
+                .Equals(trustedIdentity.PublicKeyToken, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ReadPublicKeyToken(MetadataReader metadata, AssemblyReference assembly)
+    {
+        var keyOrToken = metadata.GetBlobBytes(assembly.PublicKeyOrToken);
+        if (assembly.Flags != AssemblyFlags.PublicKey)
+        {
+            return Convert.ToHexString(keyOrToken);
+        }
+
+        var hash = SHA1.HashData(keyOrToken);
+        var token = hash[^8..];
+        Array.Reverse(token);
+        return Convert.ToHexString(token);
     }
 
     private static string FullName(MetadataReader metadata, TypeReference type)
@@ -177,4 +213,6 @@ internal static class AssemblyPolicyVerifier
     }
 
     private sealed record AssemblyMetadataInfo(string Name, IReadOnlyList<string> Friends);
+
+    private sealed record TrustedAssemblyIdentity(Version Version, string PublicKeyToken);
 }

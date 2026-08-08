@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { after, before, test } from 'node:test';
 import os from 'node:os';
@@ -20,6 +20,7 @@ const approvedAssemblyInfo = `using System.Runtime.CompilerServices;
 
 let policyModule;
 let testRoot;
+let supportsFileSymlinks = false;
 
 function runDotnet(args, cwd) {
   return spawnSync(dotnet, args, {
@@ -37,6 +38,14 @@ function runDotnet(args, cwd) {
 
 function commandFailure(result) {
   return [result.error?.message, result.stdout, result.stderr].filter(Boolean).join('\n');
+}
+
+function xmlAttribute(value) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }
 
 async function createFixtureRoot(name) {
@@ -111,6 +120,7 @@ function runPolicy(root, solutionPath, protectedProjects) {
       projectPath: verifierProjectPath,
       assemblyName: 'Puntiro.AssemblyPolicy',
     },
+    projectGraph: [{ projectPath: solutionPath, references: [] }],
     logger: {},
   });
 }
@@ -118,6 +128,18 @@ function runPolicy(root, solutionPath, protectedProjects) {
 before(async () => {
   policyModule = await import(new URL('./check-dotnet.mjs', import.meta.url).href);
   testRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-policy-'));
+  const probeSource = path.join(testRoot, 'symlink-source');
+  const probeLink = path.join(testRoot, 'symlink-link');
+  await writeFile(probeSource, 'probe');
+  try {
+    await symlink(probeSource, probeLink, 'file');
+    supportsFileSymlinks = true;
+  } catch (error) {
+    if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error;
+  } finally {
+    await rm(probeLink, { force: true });
+    await rm(probeSource, { force: true });
+  }
 });
 
 after(async () => {
@@ -211,5 +233,91 @@ test('does not substitute an approved unprotected collision DLL for the protecte
       assemblyName: 'Protected',
     }]),
     /Unapproved\.Tests/,
+  );
+});
+
+test('rejects an isolated TargetPath symlink to an approved stale normal-bin DLL', async t => {
+  if (!supportsFileSymlinks) {
+    t.skip('file symlinks/reparse points are unavailable for the current test account');
+    return;
+  }
+
+  const root = await createFixtureRoot('symlink');
+  const collisionProject = await writeProject(root, 'Collision', 'Collision', {
+    properties: '<AssemblyName>Protected</AssemblyName>',
+  });
+  buildNormally(root, collisionProject);
+  const staleApprovedDll = path.join(root, 'Collision/bin/Release/net10.0/Protected.dll');
+  await access(staleApprovedDll);
+
+  const linkScript = path.join(root, 'Protected/replace-target-with-link.mjs');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected', {
+    assemblyInfo: `${approvedAssemblyInfo}[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unapproved.Tests")]\n`,
+    projectExtra: `<Target Name="ReplaceProtectedTargetWithLink" AfterTargets="Build">
+    <Exec Command="&quot;${xmlAttribute(process.execPath)}&quot; &quot;${xmlAttribute(linkScript)}&quot; &quot;$(TargetPath)&quot; &quot;${xmlAttribute(staleApprovedDll)}&quot;" />
+  </Target>`,
+    files: {
+      'replace-target-with-link.mjs': `import { rmSync, symlinkSync } from 'node:fs';
+
+rmSync(process.argv[2], { force: true });
+symlinkSync(process.argv[3], process.argv[2], 'file');
+`,
+    },
+  });
+
+  await assert.rejects(
+    runPolicy(root, protectedProject, [{
+      projectPath: protectedProject,
+      assemblyName: 'Protected',
+    }]),
+    /symbolic link|reparse point/i,
+  );
+});
+
+test('rejects a ProjectReference injected through an arbitrary imported props file', async () => {
+  const root = await createFixtureRoot('imported-reference');
+  const forbiddenProject = await writeProject(root, 'Forbidden', 'Forbidden');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected', {
+    projectExtra: '<Import Project="Graph.props" />',
+    files: {
+      'Graph.props': `<Project>
+  <ItemGroup>
+    <ProjectReference Include="../${forbiddenProject}" />
+  </ItemGroup>
+</Project>
+`,
+    },
+  });
+
+  await assert.rejects(
+    policyModule.validateEffectiveProjectGraph({
+      dotnet,
+      repositoryRoot: root,
+      projectGraph: [{ projectPath: protectedProject, references: [] }],
+    }),
+    /unexpected effective ProjectReference.*Forbidden\/Forbidden\.csproj/,
+  );
+});
+
+test('rejects a ProjectReference injected through inherited Directory.Build.targets', async () => {
+  const root = await createFixtureRoot('inherited-reference');
+  const forbiddenProject = await writeProject(root, 'Forbidden', 'Forbidden');
+  const protectedProject = await writeProject(root, 'Protected', 'Protected');
+  await writeFile(path.join(root, 'Directory.Build.targets'), `<Project>
+  <Target Name="InjectInheritedReference" BeforeTargets="PrepareProjectReferences" Condition="'$(MSBuildProjectName)' == 'Protected'">
+    <ItemGroup>
+      <ProjectReference Include="${forbiddenProject}" />
+    </ItemGroup>
+  </Target>
+</Project>
+`);
+
+  await assert.rejects(
+    policyModule.validateEffectiveProjectGraph({
+      dotnet,
+      repositoryRoot: root,
+      projectGraph: [{ projectPath: protectedProject, references: [] }],
+    }),
+    /unexpected effective ProjectReference.*Forbidden\/Forbidden\.csproj/,
   );
 });
