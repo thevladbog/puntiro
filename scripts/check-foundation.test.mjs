@@ -22,7 +22,11 @@ const validFiles = {
   'apps/agent/Puntiro.Agent.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
   'apps/agent/Program.cs': 'Console.WriteLine("agent");\n',
   'apps/kiosk-shell/Puntiro.KioskShell.csproj': '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
-  'apps/kiosk-shell/App.xaml': '<Application />\n'
+  'apps/kiosk-shell/App.xaml': '<Application />\n',
+  'apps/admin/package.json': '{"private":true,"dependencies":{"@puntiro/ui":"workspace:*"}}\n',
+  'apps/admin/src/App.tsx': '<main>Puntiro Admin</main>\n',
+  'apps/kiosk-web/package.json': '{"private":true,"dependencies":{"@puntiro/ui":"workspace:*"}}\n',
+  'apps/kiosk-web/src/App.tsx': '<main mode="touch">Puntiro Kiosk</main>\n'
 };
 
 async function createFoundationFixture(t) {

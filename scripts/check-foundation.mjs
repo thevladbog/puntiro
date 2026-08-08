@@ -124,6 +124,30 @@ export async function validateFoundation(rootUrl) {
       if (content.includes(marker)) errors.push(`${relativePath} contains deferred dependency ${marker}`);
     }
   }
+
+  const uiApps = ['admin', 'kiosk-web'];
+  const forbiddenUiMarkers = ['localhost', 'WebSocket', 'sqlite', 'net.Socket', 'window.print', '^XA', 'SIZE '];
+
+  for (const app of uiApps) {
+    const manifestPath = path.join(root, 'apps', app, 'package.json');
+    const sourcePath = path.join(root, 'apps', app, 'src', 'App.tsx');
+    try {
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+      if (manifest.private !== true) errors.push(`${app} package must be private`);
+      if (manifest.dependencies?.['@puntiro/ui'] !== 'workspace:*') {
+        errors.push(`${app} must consume @puntiro/ui through workspace:*`);
+      }
+      const source = await readFile(sourcePath, 'utf8');
+      if (app === 'kiosk-web' && !source.includes('mode="touch"')) {
+        errors.push('kiosk-web must use touch interaction mode');
+      }
+      for (const marker of forbiddenUiMarkers) {
+        if (source.includes(marker)) errors.push(`${app} contains forbidden boundary marker ${marker}`);
+      }
+    } catch {
+      errors.push(`Missing product shell files for ${app}`);
+    }
+  }
   return errors;
 }
 
