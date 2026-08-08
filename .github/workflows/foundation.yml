@@ -1,0 +1,43 @@
+name: Repository foundation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-contracts:
+    name: Repository contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.17.0 --activate
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm check:foundation
+      - run: dotnet restore Puntiro.slnx
+      - run: dotnet build Puntiro.slnx --configuration Release --no-restore
+
+  windows-build:
+    name: Windows compile
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+      - run: dotnet restore Puntiro.slnx
+      - run: dotnet build Puntiro.slnx --configuration Release --no-restore

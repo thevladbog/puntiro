@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/apps/">
+    <Project Path="apps/agent/Puntiro.Agent.csproj" />
+    <Project Path="apps/cloud/Puntiro.Cloud.csproj" />
+    <Project Path="apps/kiosk-shell/Puntiro.KioskShell.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Puntiro.Contracts/Puntiro.Contracts.csproj" />
+  </Folder>
+</Solution>

@@ -6,12 +6,12 @@
 
 **Architecture:** Существующий pnpm workspace остаётся источником React UI и Storybook. Рядом создаётся .NET 10 solution с Cloud, Agent, Contracts и Windows Kiosk Shell boundaries; Node contract tests проверяют структуру до появления полноценных subsystem test projects. Foundation не реализует доменную логику, синхронизацию или печать.
 
-**Tech Stack:** Node.js 24.18.0 LTS, pnpm 11.17.0, TypeScript 6.0.3, React 19.2.8, Vite 8.1.5, .NET SDK 10.0.102, ASP.NET Core 10, WPF, Node built-in test runner, GitHub Actions.
+**Tech Stack:** Node.js 24.19.0 LTS, pnpm 11.17.0, TypeScript 6.0.3, React 19.2.8, Vite 8.1.5, .NET SDK 10.0.302, ASP.NET Core 10, WPF, Node built-in test runner, GitHub Actions.
 
 ## Global Constraints
 
 - Перед добавлением пакета сначала разрешить официальный Context7 library ID и прочитать актуальную документацию; затем проверить official security advisories.
-- Все npm/NuGet/tool versions exact; pre-release и floating ranges запрещены.
+- Все registry npm/NuGet/tool versions exact; pre-release и floating ranges запрещены. `workspace:*` разрешён только для first-party `@puntiro/*` workspace packages.
 - Существующие `packages/ui`, `packages/tokens`, Storybook tests и visual baselines не изменять без прямой необходимости foundation.
 - `AGENTS.md` создаётся до production-кода и обновляется вместе с реальными командами.
 - Documentation-as-code: README, docs map и ADR входят в тот же change set, что и foundation.
@@ -288,18 +288,24 @@ git commit -m "docs: establish repository operating contract"
 - Consumes: root rules and `docs:check` from Task 1.
 - Produces: `node scripts/check-dependency-policy.mjs`, exact .NET SDK/compiler policy, central NuGet ownership.
 
+> **Historical RED/GREEN snapshot:** The Task 2 checker snippets below preserve the original implementation starting point and are not the current policy contract. The normative implementation is `scripts/check-dependency-policy.mjs` together with `scripts/check-dependency-policy.test.mjs`; they enforce the review-hardened central NuGet ownership rules and exact-version forms.
+
 - [ ] **Step 1: Revalidate versions before editing**
 
 Use Context7 to resolve official documentation for `.NET` and `Entity Framework Core`. Record the query date and selected stable lines in the commit body. Verify Node and pnpm through their official release/security feeds. Then run:
+
+Security revalidation note (2026-08-08): planned SDK `10.0.102` was rejected because Microsoft [CVE-2026-50646](https://github.com/dotnet/announcements/issues/418) affects Windows Desktop runtime `10.0.0` through `10.0.9`; the [.NET 10.0.10 release notes](https://github.com/dotnet/core/blob/main/release-notes/10.0/10.0.10/10.0.10.md) list SDK `10.0.302` as carrying the patched runtime.
+
+Node security revalidation note (2026-08-08): planned Node `24.18.0` was rejected because the official [July 29 security bulletin](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases) fixes multiple high-severity 24.x issues in `24.18.1`; the official [distribution index](https://nodejs.org/dist/index.json) lists `24.19.0` (2026-08-03) as the current Krypton LTS.
 
 ```bash
 dotnet --info
 node --version
 corepack pnpm --version
-corepack pnpm audit --prod
+corepack pnpm audit --audit-level high
 ```
 
-Expected baseline pins for this plan: .NET SDK `10.0.102`, Node `24.18.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
+Expected baseline pins for this plan: .NET SDK `10.0.302`, Node `24.19.0`, pnpm `11.17.0`, React `19.2.8`, Vite `8.1.5`. If an official security advisory rejects one of these exact versions, stop and amend the plan before implementation rather than silently substituting a version.
 
 - [ ] **Step 2: Write the failing dependency-policy test**
 
@@ -331,7 +337,7 @@ Create `global.json`:
 ```json
 {
   "sdk": {
-    "version": "10.0.102",
+    "version": "10.0.302",
     "rollForward": "disable",
     "allowPrerelease": false
   }
@@ -360,6 +366,7 @@ Create `Directory.Packages.props`:
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
 </Project>
 ```
@@ -415,7 +422,7 @@ export async function validateDependencyPolicy(rootUrl) {
   }
 
   const globalJson = JSON.parse(await readFile(path.join(root, 'global.json'), 'utf8'));
-  if (globalJson.sdk?.version !== '10.0.102') errors.push('global.json must pin SDK 10.0.102');
+  if (globalJson.sdk?.version !== '10.0.302') errors.push('global.json must pin SDK 10.0.302');
   if (globalJson.sdk?.rollForward !== 'disable') errors.push('global.json must disable rollForward');
   if (globalJson.sdk?.allowPrerelease !== false) errors.push('global.json must reject prerelease SDKs');
 
@@ -1072,8 +1079,11 @@ test('foundation CI separates repository and Windows compilation evidence', asyn
   const workflow = await readFile(new URL('../.github/workflows/foundation.yml', import.meta.url), 'utf8');
   assert.match(workflow, /name: Repository contracts/);
   assert.match(workflow, /name: Windows compile/);
-  assert.match(workflow, /node-version: 24\.18\.0/);
-  assert.match(workflow, /dotnet-version: 10\.0\.102/);
+  assert.match(workflow, /node-version: 24\.19\.0/);
+  assert.match(workflow, /dotnet-version: 10\.0\.302/);
+  assert.match(workflow, /uses: actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1/);
+  assert.match(workflow, /uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7\.0\.0/);
+  assert.match(workflow, /uses: actions\/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6\.0\.0/);
   assert.match(workflow, /corepack pnpm install --frozen-lockfile/);
   assert.doesNotMatch(workflow, /Windows acceptance/);
 });
@@ -1111,13 +1121,13 @@ jobs:
     name: Repository contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.18.0
-      - uses: actions/setup-dotnet@v5.0.0
+          node-version: 24.19.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.102
+          dotnet-version: 10.0.302
       - run: corepack enable
       - run: corepack prepare pnpm@11.17.0 --activate
       - run: corepack pnpm install --frozen-lockfile
@@ -1129,15 +1139,17 @@ jobs:
     name: Windows compile
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-dotnet@v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.102
+          dotnet-version: 10.0.302
       - run: dotnet restore Puntiro.slnx
       - run: dotnet build Puntiro.slnx --configuration Release --no-restore
 ```
 
-Before committing this workflow, security-review the exact action release tags `v4.2.2`, `v4.4.0`, and `v5.0.0`. If an official advisory rejects one, stop and amend the plan before changing the pin.
+Before committing this workflow, security-review the exact action releases `actions/checkout@v7.0.1`, `actions/setup-node@v7.0.0`, and `actions/setup-dotnet@v6.0.0`. GitHub secure-use guidance requires each `uses:` entry to reference the release's full commit SHA because it is the only immutable action reference. If an official advisory rejects a release or a newer stable safe release supersedes it, stop and amend the plan before changing the pin.
+
+Security revalidation on 2026-08-08 confirmed these current stable releases from the first-party release pages: [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1), [setup-node v7.0.0](https://github.com/actions/setup-node/releases/tag/v7.0.0), and [setup-dotnet v6.0.0](https://github.com/actions/setup-dotnet/releases/tag/v6.0.0). The immutable full-SHA requirement follows [GitHub secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
 
 Do not put secrets in the workflow. Do not run physical or Windows runtime acceptance in the Ubuntu job.
 
@@ -1148,7 +1160,7 @@ Add to root scripts:
 ```json
 "test:repository": "node --test scripts/check-docs.test.mjs scripts/check-dependency-policy.test.mjs scripts/check-foundation.test.mjs scripts/product-shells.test.mjs scripts/ci-contract.test.mjs",
 "check:dotnet": "dotnet build Puntiro.slnx --configuration Release",
-"dependencies:audit": "corepack pnpm audit --prod --audit-level high && dotnet package list Puntiro.slnx --vulnerable --include-transitive",
+"dependencies:audit": "corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive",
 "check:foundation": "corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet"
 ```
 
@@ -1166,7 +1178,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Review the Windows compilation job**
 
-Confirm the YAML already contains the `windows-build` job using `windows-latest` and .NET `10.0.102`. It runs:
+Confirm the YAML already contains the `windows-build` job using `windows-latest` and .NET `10.0.302`. It runs:
 
 ```powershell
 dotnet restore Puntiro.slnx

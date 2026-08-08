@@ -7,4 +7,6 @@ playwright-report/
 test-results/
 coverage/
 *.tsbuildinfo
+**/bin/
+**/obj/
 .DS_Store

@@ -1,13 +1,14 @@
-# Puntiro Design System Platform
+# Puntiro Shipment-Label Platform
 
-Puntiro Design System Platform is the local source of truth for Puntiro product UI: design tokens, accessible React components, kiosk patterns, composition rules, bilingual documentation, and executable Storybook examples.
+Puntiro is a shipment-label platform. This design-system workspace is the local source of truth for Puntiro product UI: design tokens, accessible React components, kiosk patterns, composition rules, bilingual documentation, and executable Storybook examples.
 
-This repository contains no product API, persistence, routing, printer I/O, or completed application screens. Compositions remain a documented contract until a separate design and approval stage.
+This repository now contains the design-system and repository foundation. Product API, persistence, routing, printer I/O, and completed application screens remain pending. Compositions remain a documented contract until a separate design and approval stage. See the [documentation map](docs/README.md) for product, architecture, decision, runbook, and implementation references.
 
 ## Prerequisites
 
-- Node 24
-- pnpm 11.17.0
+- Node.js 24.19.0
+- .NET SDK 10.0.302
+- pnpm 11.17.0 through Corepack
 - Local Chromium installed by Playwright
 
 ## Getting started
@@ -31,6 +32,7 @@ pnpm test:storybook
 pnpm storybook:build
 pnpm test:visual
 pnpm check
+corepack pnpm check:foundation
 ```
 
 `pnpm check` always runs the same local pipeline in this order:
