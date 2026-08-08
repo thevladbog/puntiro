@@ -101,6 +101,65 @@ public sealed class TenancyPersistenceTests(PostgresDatabase database)
     }
 
     [Fact]
+    public async Task Activation_rejects_a_different_actor_without_state_or_event_changes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var scope = await TenancyTestScope.CreateAsync(
+            database.ConnectionString,
+            cancellationToken);
+        var organization = await scope.Service.GetOrCreateProvisioningAsync(
+            "Actor mismatch",
+            $"actor-mismatch-{Guid.NewGuid():N}",
+            cancellationToken);
+        var actualOwnerId = Guid.CreateVersion7();
+        await scope.Service.EnsureOwnerMembershipAsync(
+            organization.Id,
+            actualOwnerId,
+            cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.ActivateAsync(
+                organization.Id,
+                new TenancyAuditContext(Guid.CreateVersion7(), "trace-actor-mismatch"),
+                cancellationToken));
+
+        scope.Context.ChangeTracker.Clear();
+        var stored = await scope.Context.Organizations
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == organization.Id, cancellationToken);
+        Assert.Equal(OrganizationStatus.Provisioning, stored.Status);
+        Assert.Equal(organization.Version, stored.Version);
+        Assert.Empty(await scope.Context.SecurityEvents
+            .AsNoTracking()
+            .Where(item => item.OrganizationId == organization.Id)
+            .ToListAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task Idempotent_activation_still_rejects_a_non_owner_actor()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var scope = await TenancyTestScope.CreateAsync(
+            database.ConnectionString,
+            cancellationToken);
+        var organization = await CreateActiveOrganizationAsync(
+            scope,
+            "active-actor",
+            UserId,
+            cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.ActivateAsync(
+                organization.Id,
+                new TenancyAuditContext(Guid.CreateVersion7(), "trace-active-non-owner"),
+                cancellationToken));
+
+        Assert.Equal(1, await scope.Context.SecurityEvents
+            .AsNoTracking()
+            .CountAsync(item => item.OrganizationId == organization.Id, cancellationToken));
+    }
+
+    [Fact]
     public async Task Access_service_never_chooses_between_multiple_active_memberships()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

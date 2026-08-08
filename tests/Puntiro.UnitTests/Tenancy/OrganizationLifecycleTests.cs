@@ -12,9 +12,11 @@ public sealed class OrganizationLifecycleTests
             Guid.CreateVersion7(),
             "Puntiro",
             "puntiro");
+        var initialVersion = organization.Version;
 
         Assert.Throws<InvalidOperationException>(() => organization.Activate(hasActiveOwner: false));
         Assert.Equal(OrganizationStatus.Provisioning, organization.Status);
+        Assert.Equal(initialVersion, organization.Version);
     }
 
     [Fact]

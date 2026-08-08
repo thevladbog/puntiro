@@ -57,6 +57,26 @@ public sealed class TenancyContractValidationTests(PostgresDatabase database)
     }
 
     [Fact]
+    public async Task Owner_revocation_rejects_empty_identifiers_before_database_lookup()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var scope = await TenancyTestScope.CreateAsync(
+            database.ConnectionString,
+            cancellationToken);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => scope.Service.RevokeOwnerMembershipAsync(
+                Guid.Empty,
+                UserId,
+                cancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => scope.Service.RevokeOwnerMembershipAsync(
+                Guid.CreateVersion7(),
+                Guid.Empty,
+                cancellationToken));
+    }
+
+    [Fact]
     public async Task Find_membership_rejects_an_empty_user_id()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

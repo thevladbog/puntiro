@@ -25,7 +25,9 @@ The supported organization transitions are:
 2. `Provisioning` becomes `Active` only after an active owner membership has been verified.
 3. `Active` may become `Suspended`; suspension does not delete or revoke memberships.
 
-Activation is idempotent once the organization is active. A suspended organization is not implicitly reactivated. Memberships support the MVP role `Owner` and states `Active` and `Revoked`; `EnsureOwnerMembershipAsync` is idempotent for an existing active owner at the same `(organizationId, userId)`.
+Activation is idempotent once the organization is active, but the supplied audit actor must still be an active owner of that organization. A different or revoked user cannot activate an organization or claim an activation event. A suspended organization is not implicitly reactivated. Memberships support the MVP role `Owner` and states `Active` and `Revoked`; `EnsureOwnerMembershipAsync` is idempotent for an existing active owner at the same `(organizationId, userId)`.
+
+An active organization must always retain at least one active owner. `RevokeOwnerMembershipAsync` rejects revocation of its last active owner instead of implicitly changing organization lifecycle. Revocation remains allowed when another active owner exists, or when the organization is still provisioning or already suspended.
 
 ## Application contracts
 
@@ -33,9 +35,12 @@ Activation is idempotent once the organization is active. A suspended organizati
 
 - create-or-find provisioning organization by normalized slug;
 - idempotent owner membership creation;
+- owner membership revocation that preserves the active-organization owner invariant;
 - owner-gated atomic organization activation with a required `TenancyAuditContext`.
 
-`TenancyAuditContext` requires a non-empty opaque actor user ID and a 1–128 character trace ID. Trace IDs accept only ASCII letters, digits, `.`, `_`, `:`, and `-`; whitespace, separators, control characters, and unbounded text are rejected before database access. Callers must pass an already-redacted correlation value and must never put an email, credential, activation code, token, or other personal data in it. Even an idempotent activation validates the organization ID and audit context before returning.
+`TenancyAuditContext` requires a non-empty opaque actor user ID and a 1–128 character trace ID. Trace IDs accept only ASCII letters, digits, `.`, `_`, `:`, and `-`; whitespace, separators, control characters, and unbounded text are rejected before database access. Callers must pass an already-redacted correlation value and must never put an email, credential, activation code, token, or other personal data in it. Activation verifies that this exact actor has an active owner membership in the same transaction before changing state or appending the event. Even an idempotent activation performs the actor check before returning.
+
+Activation and owner revocation use a PostgreSQL `ReadCommitted` transaction and acquire the organization row with `FOR UPDATE` before reading or changing memberships. The shared organization-first lock order serializes activation against revocation and serializes concurrent owner revocations, so at most one competing transition can use a given pre-change owner set. Membership lifecycle methods are aggregate-local transitions only; production persistence must invoke `RevokeOwnerMembershipAsync` rather than mutate a tracked `Membership` directly because the last-owner rule spans organization and membership rows.
 
 `ITenantAccessService` derives tenant access from active memberships joined to active organizations:
 
@@ -67,8 +72,8 @@ Review every generated operation before commit. It must use only schema `tenancy
 ## Failure modes
 
 - Invalid display names, slugs, empty identifiers, null audit context, or unsafe/overlong trace IDs fail with argument exceptions before lookup or an idempotent return.
-- Missing organizations fail with `KeyNotFoundException`.
-- Activation without an active owner, activation from a suspended state, or reuse of a revoked/non-owner membership fails closed with `InvalidOperationException`.
+- Missing organizations or owner memberships fail with `KeyNotFoundException`.
+- Activation by a different, revoked, or non-owner actor; activation from a suspended state; reuse of a revoked/non-owner membership; or revocation of the last active owner of an active organization fails closed with `InvalidOperationException`.
 - Revoked memberships and inactive organizations never grant tenant access.
 - Concurrent writes may produce `DbUpdateConcurrencyException`; callers must not overwrite another accepted change.
 - Direct modification or deletion of a stored security event is rejected by PostgreSQL.

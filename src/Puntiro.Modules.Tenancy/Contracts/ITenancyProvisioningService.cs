@@ -14,6 +14,11 @@ public interface ITenancyProvisioningService
         Guid userId,
         CancellationToken cancellationToken);
 
+    Task<MembershipSnapshot> RevokeOwnerMembershipAsync(
+        Guid organizationId,
+        Guid userId,
+        CancellationToken cancellationToken);
+
     Task ActivateAsync(
         Guid organizationId,
         TenancyAuditContext auditContext,
