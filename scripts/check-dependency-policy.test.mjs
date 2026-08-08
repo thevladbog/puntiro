@@ -12,6 +12,16 @@ const validCentralPackages = `<Project>
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
 </Project>`;
+const validDotnetTools = {
+  version: 1,
+  isRoot: true,
+  tools: {
+    'dotnet-ef': {
+      version: '10.0.10',
+      commands: ['dotnet-ef'],
+    },
+  },
+};
 
 async function withPolicyFixture(options, run) {
   const root = await mkdtemp(path.join(tmpdir(), 'puntiro-dependency-policy-'));
@@ -35,6 +45,11 @@ async function withPolicyFixture(options, run) {
       path.join(root, 'Directory.Packages.props'),
       options.centralPackages ?? validCentralPackages,
     );
+    await mkdir(path.join(root, '.config'));
+    await writeFile(
+      path.join(root, '.config', 'dotnet-tools.json'),
+      JSON.stringify(options.dotnetTools ?? validDotnetTools),
+    );
 
     for (const workspace of options.workspaces ?? []) {
       const directory = path.join(root, workspace.directory);
@@ -57,6 +72,30 @@ async function withPolicyFixture(options, run) {
 test('toolchains and package manifests use exact stable versions', async () => {
   const errors = await validateDependencyPolicy(new URL('../', import.meta.url));
   assert.deepEqual(errors, []);
+});
+
+test('repository dotnet tools use exact approved versions', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../.config/dotnet-tools.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.tools['dotnet-ef'].version, '10.0.10');
+  assert.deepEqual(manifest.tools['dotnet-ef'].commands, ['dotnet-ef']);
+});
+
+test('dependency policy rejects an unapproved dotnet-ef version', async () => {
+  await withPolicyFixture({
+    dotnetTools: {
+      ...validDotnetTools,
+      tools: {
+        'dotnet-ef': {
+          version: '10.0.9',
+          commands: ['dotnet-ef'],
+        },
+      },
+    },
+  }, async (rootUrl) => {
+    assert.deepEqual(await validateDependencyPolicy(rootUrl), [
+      '.config/dotnet-tools.json tools.dotnet-ef.version must be 10.0.10, received 10.0.9',
+    ]);
+  });
 });
 
 test('npm registry and lockfile are portable to GitHub runners', async () => {

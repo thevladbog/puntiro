@@ -8,21 +8,40 @@ import { validateFoundation } from './check-foundation.mjs';
 
 const projects = [
   'src/Puntiro.Contracts/Puntiro.Contracts.csproj',
+  'src/Puntiro.Security/Puntiro.Security.csproj',
+  'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+  'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+  'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
   'apps/cloud/Puntiro.Cloud.csproj',
   'apps/agent/Puntiro.Agent.csproj',
-  'apps/kiosk-shell/Puntiro.KioskShell.csproj'
+  'apps/kiosk-shell/Puntiro.KioskShell.csproj',
+  'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
+  'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj',
+  'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj'
 ];
 
 const validFiles = {
   'Puntiro.slnx': `<Solution>\n${projects.map(project => `  <Project Path="${project}" />`).join('\n')}\n</Solution>\n`,
   'src/Puntiro.Contracts/Puntiro.Contracts.csproj': '<Project Sdk="Microsoft.NET.Sdk" />\n',
   'src/Puntiro.Contracts/ProtocolVersion.cs': 'namespace Puntiro.Contracts;\n',
-  'apps/cloud/Puntiro.Cloud.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
+  'src/Puntiro.Security/Puntiro.Security.csproj': '<Project Sdk="Microsoft.NET.Sdk" />\n',
+  'src/Puntiro.Security/SecurityModuleMarker.cs': 'namespace Puntiro.Security;\n',
+  'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /></ItemGroup></Project>\n',
+  'src/Puntiro.Modules.Identity/IdentityModuleMarker.cs': 'namespace Puntiro.Modules.Identity;\n',
+  'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /></ItemGroup></Project>\n',
+  'src/Puntiro.Modules.Tenancy/TenancyModuleMarker.cs': 'namespace Puntiro.Modules.Tenancy;\n',
+  'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Security/Puntiro.Security.csproj" /></ItemGroup></Project>\n',
+  'src/Puntiro.Modules.Integrations/IntegrationsModuleMarker.cs': 'namespace Puntiro.Modules.Integrations;\n',
+  'apps/cloud/Puntiro.Cloud.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj" /></ItemGroup></Project>\n',
   'apps/cloud/Program.cs': 'var app = WebApplication.CreateBuilder().Build();\n',
   'apps/agent/Puntiro.Agent.csproj': '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
   'apps/agent/Program.cs': 'Console.WriteLine("agent");\n',
   'apps/kiosk-shell/Puntiro.KioskShell.csproj': '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /></ItemGroup></Project>\n',
   'apps/kiosk-shell/App.xaml': '<Application />\n',
+  'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj': '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /></ItemGroup></Project>\n',
+  'tools/Puntiro.Provisioning/Program.cs': 'Console.WriteLine("provisioning");\n',
+  'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj': '<Project Sdk="Microsoft.NET.Sdk" />\n',
+  'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj': '<Project Sdk="Microsoft.NET.Sdk" />\n',
   'apps/admin/package.json': '{"private":true,"dependencies":{"@puntiro/ui":"workspace:*"}}\n',
   'apps/admin/src/App.tsx': '<main>Puntiro Admin</main>\n',
   'apps/kiosk-web/package.json': '{"private":true,"dependencies":{"@puntiro/ui":"workspace:*"}}\n',
@@ -59,7 +78,7 @@ test('rejects a commented Contracts reference', async t => {
   const { root, rootUrl } = await createFoundationFixture(t);
   await writeFile(
     path.join(root, 'apps/cloud/Puntiro.Cloud.csproj'),
-    '<Project Sdk="Microsoft.NET.Sdk.Web"><!-- <ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /> --></Project>\n'
+    '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><!-- <ProjectReference Include="../../src/Puntiro.Contracts/Puntiro.Contracts.csproj" /> --><ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /><ProjectReference Include="../../src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj" /></ItemGroup></Project>\n'
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
@@ -91,6 +110,18 @@ test('rejects application projects referencing another application', async t => 
 
   assert.deepEqual(await validateFoundation(rootUrl), [
     'apps/agent/Puntiro.Agent.csproj must not reference application project: apps/cloud/Puntiro.Cloud.csproj'
+  ]);
+});
+
+test('cloud may compose approved modules but modules cannot reference each other', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj'),
+    '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" /></ItemGroup></Project>',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must not reference module: src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
   ]);
 });
 
