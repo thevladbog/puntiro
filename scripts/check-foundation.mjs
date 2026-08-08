@@ -62,6 +62,16 @@ const internalAccessFiles = [...internalAccessProjects].map(project => path.posi
 
 const projectDirectories = projects.map(project => path.posix.dirname(project));
 const projectSourceExtensions = new Set(['.config', '.cs', '.csproj', '.json', '.props', '.targets', '.xaml', '.xml']);
+const generatedProjectDirectories = new Set([
+  '.git',
+  '.superpowers',
+  '.worktrees',
+  'bin',
+  'generated',
+  'Generated',
+  'node_modules',
+  'obj',
+]);
 const forbidden = ['Microsoft.Data.Sqlite', 'System.Net.Sockets', 'System.Printing', 'Microsoft.Web.WebView2'];
 const uiBoundaryExtensions = new Set([
   '.cjs',
@@ -123,22 +133,35 @@ function sourceWithoutComments(relativePath, content) {
   return withoutXmlComments(content);
 }
 
-function internalsVisibleTo(content) {
-  const targets = new Set();
-  const pattern = /\[\s*assembly\s*:\s*(?:[\w.]+\.)?InternalsVisibleTo(?:Attribute)?\s*\(\s*"([^"]+)"\s*\)\s*\]/g;
-  for (const match of sourceWithoutComments('AssemblyInfo.cs', content).matchAll(pattern)) {
-    targets.add(match[1]);
+function assemblyInternalsVisibleTo(content) {
+  const declarations = [];
+  const attributePattern = /\[\s*assembly\s*:\s*([\s\S]*?)\]/g;
+  const internalsVisibleToName = /^(?:global::)?(?:System\.Runtime\.CompilerServices\.)?InternalsVisibleTo(?:Attribute)?\b/;
+  const literalAttribute = /^(?:global::)?(?:System\.Runtime\.CompilerServices\.)?InternalsVisibleTo(?:Attribute)?\s*\(\s*(?:@"((?:""|[^"])*)"|"((?:\\.|[^"\\])*)")\s*\)\s*$/;
+
+  for (const match of sourceWithoutComments('AssemblyInfo.cs', content).matchAll(attributePattern)) {
+    const attribute = match[1].trim();
+    if (!internalsVisibleToName.test(attribute)) continue;
+
+    const literal = attribute.match(literalAttribute);
+    if (!literal) {
+      declarations.push({ target: undefined });
+      continue;
+    }
+    declarations.push({ target: literal[1] === undefined ? literal[2] : literal[1].replaceAll('""', '"') });
   }
-  return targets;
+
+  return declarations;
 }
 
 async function projectSourceFiles(root, relativeDirectory) {
   const directory = path.join(root, relativeDirectory);
-  const entries = await readdir(directory, { withFileTypes: true });
+  const entries = (await readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
   const files = await Promise.all(entries.map(async entry => {
     const relativePath = path.posix.join(relativeDirectory, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === 'bin' || entry.name === 'obj') return [];
+      if (generatedProjectDirectories.has(entry.name)) return [];
       return projectSourceFiles(root, relativePath);
     }
     return projectSourceExtensions.has(path.extname(entry.name)) ? [relativePath] : [];
@@ -180,10 +203,6 @@ export async function validateFoundation(rootUrl) {
   const contents = Object.fromEntries(await Promise.all(projects.map(async relativePath => [
     relativePath,
     await readFile(path.join(root, relativePath), 'utf8')
-  ])));
-  const assemblyInfos = Object.fromEntries(await Promise.all(internalAccessFiles.map(async relativePath => [
-    relativePath,
-    await readFile(path.join(root, relativePath), 'utf8'),
   ])));
   const solution = await readFile(path.join(root, 'Puntiro.slnx'), 'utf8');
   const listedProjects = solutionProjects(solution);
@@ -293,17 +312,33 @@ export async function validateFoundation(rootUrl) {
     }
   }
 
-  for (const relativePath of internalAccessFiles) {
-    const targets = internalsVisibleTo(assemblyInfos[relativePath]);
-    for (const assemblyName of allowedInternalTestAssemblies) {
-      if (!targets.has(assemblyName)) {
-        errors.push(`${relativePath} must grant InternalsVisibleTo: ${assemblyName}`);
+  for (const project of internalAccessProjects) {
+    const internalTargets = new Set();
+    const unparseableInternalAccessFiles = [];
+    const unapprovedInternalAccess = [];
+    const internalAccessSourceFiles = (await projectSourceFiles(root, path.posix.dirname(project)))
+      .filter(relativePath => relativePath.endsWith('.cs'));
+    for (const relativePath of internalAccessSourceFiles) {
+      for (const declaration of assemblyInternalsVisibleTo(await readFile(path.join(root, relativePath), 'utf8'))) {
+        if (declaration.target === undefined) {
+          unparseableInternalAccessFiles.push(relativePath);
+        } else if (allowedInternalTestAssemblies.includes(declaration.target)) {
+          internalTargets.add(declaration.target);
+        } else {
+          unapprovedInternalAccess.push({ relativePath, target: declaration.target });
+        }
       }
     }
-    for (const assemblyName of targets) {
-      if (!allowedInternalTestAssemblies.includes(assemblyName)) {
-        errors.push(`${relativePath} must not grant InternalsVisibleTo: ${assemblyName}`);
+    for (const assemblyName of allowedInternalTestAssemblies) {
+      if (!internalTargets.has(assemblyName)) {
+        errors.push(`${project} must grant InternalsVisibleTo: ${assemblyName}`);
       }
+    }
+    for (const { relativePath, target } of unapprovedInternalAccess) {
+      errors.push(`${relativePath} must not grant InternalsVisibleTo: ${target}`);
+    }
+    for (const relativePath of unparseableInternalAccessFiles) {
+      errors.push(`${relativePath} contains an unparseable assembly InternalsVisibleTo declaration`);
     }
   }
 

@@ -194,8 +194,42 @@ test('production internals are visible only to the named test assemblies', async
   );
 
   assert.deepEqual(await validateFoundation(rootUrl), [
-    'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must grant InternalsVisibleTo: Puntiro.IntegrationTests',
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj must grant InternalsVisibleTo: Puntiro.IntegrationTests',
     'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs must not grant InternalsVisibleTo: Unapproved.Tests',
+  ]);
+});
+
+test('production internals are enforced across every source file', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs'),
+    '[assembly: global::System.Runtime.CompilerServices.InternalsVisibleTo(@"Unapproved.Tests")]\n',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/AlternateAssemblyInfo.cs must not grant InternalsVisibleTo: Unapproved.Tests',
+  ]);
+});
+
+test('accepts qualified InternalsVisibleTo attributes with normal and verbatim literals', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/Properties/AssemblyInfo.cs'),
+    '[assembly: global::System.Runtime.CompilerServices.InternalsVisibleTo(@"Puntiro.UnitTests")]\n[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Puntiro.IntegrationTests")]\n',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), []);
+});
+
+test('rejects dynamic assembly InternalsVisibleTo declarations', async t => {
+  const { root, rootUrl } = await createFoundationFixture(t);
+  await writeFile(
+    path.join(root, 'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs'),
+    '[assembly: InternalsVisibleTo(GetTestAssemblyName())]\n',
+  );
+
+  assert.deepEqual(await validateFoundation(rootUrl), [
+    'src/Puntiro.Modules.Identity/DynamicAssemblyInfo.cs contains an unparseable assembly InternalsVisibleTo declaration',
   ]);
 });
 
