@@ -4,7 +4,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../apps/cloud/Puntiro.Cloud.csproj" />
+    <ProjectReference Include="../../apps/cloud/Puntiro.Cloud.csproj" Aliases="cloud" />
     <ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" />
     <ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" />
     <ProjectReference Include="../../src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj" />

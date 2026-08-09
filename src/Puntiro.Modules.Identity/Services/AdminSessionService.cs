@@ -70,7 +70,7 @@ internal sealed class AdminSessionService(
             now));
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new IssuedAdminSession(Principal(session), token.TakeRawToken());
+        return new IssuedAdminSession(Principal(session, user.DisplayEmail), token.TakeRawToken());
     }
 
     public async Task<AdminSessionPrincipal?> ValidateAsync(
@@ -140,7 +140,92 @@ internal sealed class AdminSessionService(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return Principal(session);
+        return Principal(session, user.DisplayEmail);
+    }
+
+    public async Task<AdminSessionPrincipal?> RecordStepUpAsync(
+        Guid sessionId,
+        DateTimeOffset verifiedAt,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(auditContext);
+        if (sessionId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var initialNow = timeProvider.GetUtcNow();
+        var verifiedAtUtc = verifiedAt.Offset == TimeSpan.Zero
+            ? verifiedAt
+            : verifiedAt.ToUniversalTime();
+        if (verifiedAtUtc > initialNow || verifiedAtUtc < initialNow.AddMinutes(-1))
+        {
+            return null;
+        }
+
+        var userId = await context.Sessions.AsNoTracking()
+            .Where(item => item.Id == sessionId)
+            .Select(item => (Guid?)item.UserId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (userId is null)
+        {
+            return null;
+        }
+
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+        await LockUserAsync(userId.Value, cancellationToken);
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM identity.sessions WHERE id = {sessionId} FOR UPDATE",
+            cancellationToken);
+        var user = await context.AdminUsers.SingleOrDefaultAsync(
+            item => item.Id == userId.Value,
+            cancellationToken);
+        var session = await context.Sessions.SingleOrDefaultAsync(
+            item => item.Id == sessionId,
+            cancellationToken);
+        if (user is not null)
+        {
+            await context.Entry(user).ReloadAsync(cancellationToken);
+        }
+
+        if (session is not null)
+        {
+            await context.Entry(session).ReloadAsync(cancellationToken);
+        }
+
+        var now = timeProvider.GetUtcNow();
+        if (user is null || session is null ||
+            user.Status != AdminUserStatus.Active ||
+            session.AuthenticationEpoch != user.AuthenticationEpoch ||
+            auditContext.ActorUserId is not null && auditContext.ActorUserId != user.Id ||
+            verifiedAtUtc > now || verifiedAtUtc < now.AddMinutes(-1) ||
+            !SessionExpiryPolicy.IsValid(
+                now,
+                session.IdleExpiresAtUtc,
+                session.AbsoluteExpiresAtUtc,
+                session.RevokedAtUtc))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        session.RecordStepUp(verifiedAtUtc);
+        context.SecurityEvents.Add(Event(
+            user.Id,
+            user.Id,
+            session.ActiveOrganizationId,
+            session.Id,
+            auditContext.TraceId,
+            "session.step_up",
+            "success",
+            "totp_accepted",
+            now));
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Principal(session, user.DisplayEmail);
     }
 
     public async Task RevokeAsync(
@@ -237,10 +322,11 @@ internal sealed class AdminSessionService(
             $"SELECT id FROM identity.admin_users WHERE id = {userId} FOR UPDATE",
             cancellationToken);
 
-    private static AdminSessionPrincipal Principal(AdminSession session) =>
+    private static AdminSessionPrincipal Principal(AdminSession session, string email) =>
         new(
             session.Id,
             session.UserId,
+            email,
             session.ActiveOrganizationId,
             session.IdleExpiresAtUtc,
             session.AbsoluteExpiresAtUtc,

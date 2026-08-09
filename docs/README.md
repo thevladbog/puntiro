@@ -20,6 +20,7 @@
 
 - [Identity cryptographic primitives](modules/identity.md)
 - [Tenancy](modules/tenancy.md)
+- [Cloud Admin authentication boundary](modules/cloud-admin-auth.md)
 
 ## Runbooks
 

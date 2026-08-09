@@ -1,5 +1,6 @@
 using System.Text;
 using Puntiro.Modules.Identity.Security;
+using Puntiro.Modules.Identity.Contracts;
 using Xunit;
 
 namespace Puntiro.UnitTests.Identity;
@@ -87,5 +88,14 @@ public sealed class EmailAddressTests
         var email = EmailAddress.Normalize("owner@example.com");
 
         Assert.Equal(nameof(EmailAddress), email.ToString());
+    }
+
+    [Fact]
+    public void Rate_limit_partition_uses_the_exact_identity_normalization_policy()
+    {
+        Assert.Equal(
+            AdminEmailPartition.Normalize(" Üser@BÜCHER.Example "),
+            AdminEmailPartition.Normalize("üSER@xn--bcher-kva.example"));
+        Assert.Equal("<invalid>", AdminEmailPartition.Normalize("not-an-email"));
     }
 }

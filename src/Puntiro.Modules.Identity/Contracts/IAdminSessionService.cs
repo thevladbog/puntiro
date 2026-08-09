@@ -5,6 +5,7 @@ namespace Puntiro.Modules.Identity.Contracts;
 public sealed record AdminSessionPrincipal(
     Guid SessionId,
     Guid UserId,
+    string Email,
     Guid OrganizationId,
     DateTimeOffset IdleExpiresAt,
     DateTimeOffset AbsoluteExpiresAt,
@@ -34,6 +35,12 @@ public interface IAdminSessionService
 
     Task<AdminSessionPrincipal?> ValidateAsync(
         string presentedToken,
+        CancellationToken cancellationToken);
+
+    Task<AdminSessionPrincipal?> RecordStepUpAsync(
+        Guid sessionId,
+        DateTimeOffset verifiedAt,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken);
 
     Task RevokeAsync(

@@ -73,7 +73,7 @@ Session lifetime is server-authoritative:
 
 `VerifiedIdentity` carries the durable authentication epoch read under the factor transaction. Session creation accepts it only when a locked and reloaded active user still has that exact epoch. Every session stores the epoch it was created under; validation rechecks the current active user and epoch. Reset and suspension advance the epoch before committing, so a stale verified identity cannot create a valid post-change session even when creation races the security operation.
 
-TOTP login copies the factor verification time to `second_factor_verified_at`. Recovery login stores `null`. `StepUpTotpAsync` verifies a new replay-protected TOTP counter and returns its accepted UTC time; the Cloud host is responsible for applying that result to its current-session use case and five-minute authorization policy.
+TOTP login copies the factor verification time to `second_factor_verified_at`. Recovery login stores `null`. `StepUpTotpAsync` verifies a new replay-protected TOTP counter and returns its accepted UTC time. The Cloud host passes that result to `IAdminSessionService.RecordStepUpAsync`, which locks and reloads the active user and current session in the established user-first order, rejects revoked/expired/stale-epoch sessions, stores freshness monotonically, and appends a bounded audit event in the same transaction. Concurrent logout, reset, or account suspension cannot leave an old session usable. The Cloud host applies the five-minute authorization policy to the resulting durable timestamp.
 
 ## Application contracts
 
@@ -85,7 +85,7 @@ TOTP login copies the factor verification time to `second_factor_verified_at`. R
 
 `IAdminAuthenticationService` verifies password plus exactly one TOTP/recovery factor and performs replay/one-time state transitions. It returns `VerifiedIdentity?`, so every invalid external credential shape and value has the same result. `StepUpTotpAsync` accepts only TOTP.
 
-`IAdminSessionService` creates, validates, revokes one, or revokes every user session. `AdminSessionPrincipal` receives its user and organization identifiers only from the durable verified row. Callers must not treat an organization ID from request input as authorization; the Cloud host must recheck Tenancy.
+`IAdminSessionService` creates, validates, records a successful current-session TOTP step-up, revokes one, or revokes every user session. `AdminSessionPrincipal` receives its user metadata and organization identifier only from durable verified rows. Callers must not treat an organization ID from request input as authorization; the Cloud host must recheck Tenancy.
 
 Every provisioning, authentication, factor-change, session-create, and session-revoke operation that emits an event requires an `IdentityAuditContext`. Its trace ID is 1–128 characters and accepts only ASCII letters, digits, `.`, `_`, `:`, and `-`; an optional actor cannot be the empty GUID. Unauthenticated login uses a null caller actor and derives the actor only after successful authentication. Self-service operations derive the subject as actor when no actor is supplied; administrative suspension/revoke may supply the already-authorized actor. The caller must pass only an opaque correlation ID, never an email, network address, credential, code, token, or arbitrary request text. Session validation deliberately accepts no audit context because it emits no per-request event and must not create an attacker-controlled durable event stream.
 
@@ -104,6 +104,8 @@ Puntiro__Security__SessionHmac__CurrentVersion
 Puntiro__Security__SessionHmac__Keys__<version>
 Puntiro__Security__RecoveryHmac__CurrentVersion
 Puntiro__Security__RecoveryHmac__Keys__<version>
+Puntiro__Security__IntegrationHmac__CurrentVersion
+Puntiro__Security__IntegrationHmac__Keys__<version>
 ```
 
 HMAC values are base64 encodings of exactly 32 random bytes. Every retained version needed by a stored verifier must remain configured; the current version must be present in its corresponding key set.

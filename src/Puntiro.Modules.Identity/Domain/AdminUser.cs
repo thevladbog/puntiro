@@ -307,6 +307,16 @@ internal sealed class AdminSession
         Version++;
     }
 
+    internal void RecordStepUp(DateTimeOffset verifiedAtUtc)
+    {
+        var verifiedAt = AdminUser.EnsureUtc(verifiedAtUtc);
+        if (SecondFactorVerifiedAtUtc is null || verifiedAt > SecondFactorVerifiedAtUtc)
+        {
+            SecondFactorVerifiedAtUtc = verifiedAt;
+            Version++;
+        }
+    }
+
     internal void Revoke(DateTimeOffset now, string reason)
     {
         if (RevokedAtUtc is not null)

@@ -2,7 +2,7 @@
 
 Puntiro is a shipment-label platform. This design-system workspace is the local source of truth for Puntiro product UI: design tokens, accessible React components, kiosk patterns, composition rules, bilingual documentation, and executable Storybook examples.
 
-This repository now contains the design-system and repository foundation. Product API, persistence, routing, printer I/O, and completed application screens remain pending. Compositions remain a documented contract until a separate design and approval stage. See the [documentation map](docs/README.md) for product, architecture, decision, runbook, and implementation references.
+This repository contains the design-system, repository foundation, and the first Cloud identity/tenancy boundary: PostgreSQL-backed owner accounts, server sessions, secure Admin authentication routes, readiness, and OpenAPI. Shipment routing, kiosk/agent persistence, printer I/O, and completed application screens remain pending. Compositions remain a documented contract until their separate design and approval stage. See the [documentation map](docs/README.md) for product, architecture, decision, runbook, and implementation references.
 
 ## Prerequisites
 

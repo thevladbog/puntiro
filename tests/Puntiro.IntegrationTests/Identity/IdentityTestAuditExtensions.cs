@@ -44,6 +44,12 @@ internal static class IdentityTestAuditExtensions
         CancellationToken cancellationToken) =>
         service.CompleteOwnerTotpResetAsync(pending, firstTotpCode, Audit, cancellationToken);
 
+    internal static Task SuspendAsync(
+        this IdentityProvisioningService service,
+        Guid userId,
+        CancellationToken cancellationToken) =>
+        service.SuspendAsync(userId, Audit, cancellationToken);
+
     internal static Task<VerifiedIdentity?> VerifyAsync(
         this AdminAuthenticationService service,
         AdminCredentials credentials,
@@ -63,4 +69,11 @@ internal static class IdentityTestAuditExtensions
         string reason,
         CancellationToken cancellationToken) =>
         service.RevokeAsync(sessionId, reason, Audit, cancellationToken);
+
+    internal static Task<AdminSessionPrincipal?> RecordStepUpAsync(
+        this AdminSessionService service,
+        Guid sessionId,
+        DateTimeOffset verifiedAt,
+        CancellationToken cancellationToken) =>
+        service.RecordStepUpAsync(sessionId, verifiedAt, Audit, cancellationToken);
 }
