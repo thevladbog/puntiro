@@ -26,7 +26,7 @@ The following commands passed locally in this checkout with the pinned runtimes 
 - `corepack pnpm dependencies:check` and `corepack pnpm dependencies:audit` — no known npm or transitive NuGet vulnerabilities reported by the configured registries;
 - `corepack pnpm docs:check`;
 - `corepack pnpm test:repository` — 73 passed, 0 failed;
-- `corepack pnpm test:cloud:contracts` — 57 passed, 0 failed, including Git-enumerated secret/config probes, strict secret-safe dotenv execution, normal runtime-material preflight and isolated restore validation;
+- `corepack pnpm test:cloud:contracts` — 58 passed, 0 failed, including Git-enumerated secret/config probes, strict secret-safe dotenv execution, normal runtime-material preflight and isolated restore validation;
 - `corepack pnpm test:cloud:compose` — 6 passed, 0 failed, covering database-only configuration, mandatory Cloud runtime files, disabled/proxy-only/network-only/combined proxy values, arbitrary retained HMAC versions and non-creating Data Protection/certificate binds;
 - `corepack pnpm check:foundation` — aggregate documentation, dependency, repository, boundary, UI package and Cloud security checks passed;
 - `corepack pnpm check` — UI unit tests 78 passed, Storybook tests 171 passed, the static Storybook build passed, and Playwright tests 28 passed;

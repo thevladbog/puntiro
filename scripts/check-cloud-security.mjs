@@ -89,9 +89,7 @@ function containsWhitespaceEncodedIntegrationToken(content) {
   for (let start = 0; start < content.length; start += 1) {
     if (!isBase64Character(content[start])) continue;
 
-    let previous = start - 1;
-    while (previous >= 0 && isAllowedWhitespace(content[previous])) previous -= 1;
-    if (previous >= 0 && isBase64Character(content[previous])) continue;
+    if (start > 0 && isBase64Character(content[start - 1])) continue;
 
     let candidate = '';
     const limit = Math.min(content.length, start + 2048);

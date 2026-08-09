@@ -447,6 +447,48 @@ test('detects whitespace-wrapped base64 tokens at every bounded chunk width with
   assert.doesNotMatch(JSON.stringify(errors), /pnt_test_W|cG50X3Rlc3Q/);
 });
 
+test('detects wrapped base64 tokens after prose-word whitespace boundaries without noise false positives', async t => {
+  const raw = `pnt_live_${'Y'.repeat(22)}.${'Z'.repeat(43)}`;
+  const encoded = Buffer.from(raw).toString('base64');
+  const separators = new Map([
+    ['space', ' '],
+    ['tab', '\t'],
+    ['lf', '\n'],
+    ['crlf', '\r\n'],
+  ]);
+  const overrides = {
+    'noise/word-before-unrelated-base64.txt':
+      'credential QWxhZGRpbjpvcGVuIHNlc2FtZQ==\n',
+    'noise/newline-before-unrelated-base64.txt':
+      'credential\nVGhpcyBpcyBvcmRpbmFyeSBub2lzZSwgbm90IGEgdG9rZW4u\n',
+    'noise/adversarial-prose.txt':
+      'LongBase64LookingWords remain ordinary prose across whitespace and punctuation. ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789.\n',
+  };
+  const expected = [];
+
+  for (const [separatorName, separator] of separators) {
+    for (let width = 1; width <= 15; width += 1) {
+      const relativePath = `boundaries/${separatorName}/width-${String(width).padStart(2, '0')}.txt`;
+      const wrapped = encoded.match(new RegExp(`.{1,${width}}`, 'g')).join(separator);
+      overrides[relativePath] =
+        `Arbitrary preceding prose (${separatorName}, ${width}); credential${separator}${wrapped}`;
+      expected.push(`${relativePath} must not contain an integration token`);
+    }
+  }
+
+  const recursivePath = 'boundaries/recursive/word-before-double-base64.txt';
+  const twiceEncoded = Buffer.from(encoded).toString('base64');
+  overrides[recursivePath] = `credential ${twiceEncoded.match(/.{1,8}/g).join(' ')}`;
+  expected.push(`${recursivePath} must not contain an integration token`);
+
+  const fixture = await createCloudFixture(t, overrides);
+  const errors = await validateCloudSecurity(fixture);
+  const tokenErrors = errors.filter(error => error.endsWith('must not contain an integration token'));
+
+  assert.deepEqual(tokenErrors, expected.sort());
+  assert.doesNotMatch(JSON.stringify(errors), /pnt_live_Y|cG50X2xpdmVf/);
+});
+
 test('allows documentation names blank values and pure environment references without fallbacks', async t => {
   const fixture = await createCloudFixture(t, {
     'docs/reference/names.md': '`POSTGRES_PASSWORD`, `SERVICE_API_KEY`, and `ConnectionStrings__Puntiro` are variable names.\nAuthorization: Bearer pnt_live_<public-id>.<secret>\n',
