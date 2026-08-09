@@ -1,6 +1,6 @@
 # Integrations module
 
-`Puntiro.Modules.Integrations` owns long-lived credentials used by simple external systems that can send one fixed HTTP request with an `Authorization` header. It does not implement OAuth exchanges, refresh tokens, automatic rotation, shipment endpoints, or HTTP authorization. The Cloud host must authenticate an active owner before list/create/revoke and must recheck the token organization's active state before an integration use case runs.
+`Puntiro.Modules.Integrations` owns long-lived credentials used by simple external systems that can send one fixed HTTP request with an `Authorization` header. It does not implement OAuth exchanges, refresh tokens, automatic rotation, or shipment endpoints. The Cloud host authenticates an active owner before list/create/revoke, requires a current five-minute TOTP step-up for create, and rechecks the token organization's active state before an integration use case runs.
 
 The module references only `Puntiro.Security`. It does not reference Identity or Tenancy and never reads their schemas. Organization and user IDs are opaque ownership/audit identifiers; there are deliberately no cross-schema foreign keys.
 
@@ -59,6 +59,14 @@ Display names are trimmed and must contain 1–100 valid Unicode scalar values. 
 
 Creation runs in a PostgreSQL `Serializable` transaction, counts active rows for the organization, selects an available active slot, inserts the token/scopes and appends the audit event. Serialization/deadlock failures and collisions on the two owned uniqueness guards retry at most four complete attempts with a fresh secret. After the bound, callers receive the generic `IntegrationTokenCreationConflictException`. A count of two produces `ActiveTokenLimitException` without generating a token.
 
+When the Cloud production Npgsql retry strategy is enabled, every create attempt is a complete
+replayable unit. Its token and audit identifiers, creation time, public ID, verifier, and one-time raw
+material remain stable across provider replay of that attempt. Before retrying a transaction, the
+service checks the stable token/event pair; an ambiguous successful commit returns the original
+one-time material instead of inserting a second durable row or generating a second credential.
+Bounded serializable/unique-slot conflict attempts may still generate fresh material after a
+confirmed rollback.
+
 The service owns the transaction, raw token and verifier until both commit and explicit transaction disposal succeed. It never uses an implicit `await using` return path for creation and never transfers the raw credential before disposal completes. A failed body always records its original exception, attempts transaction disposal, clears verifier bytes and attempt-owned tracked state, then either classifies that original exception for bounded retry or rethrows it with its preserved stack. A disposal error never causes a retry.
 
 If both the body and disposal fail, `IntegrationTokenAttemptCleanupException` contains the original body failure first and the disposal failure second; the original is also `InnerException`. If commit was confirmed but disposal then fails, the durable token may already exist without any recoverable raw credential. The service clears all credential material and throws `IntegrationTokenCommittedWithoutCredentialException` with safe token/organization IDs. Operators must locate and revoke that token; callers must not retry automatically. Transaction disposal failure is never described as a successful rollback. Cleanup is idempotent, best effort and cannot replace the recorded primary failure. List projects only metadata and scopes; it never loads or returns the verifier or raw value.
@@ -67,9 +75,35 @@ If both the body and disposal fail, `IntegrationTokenAttemptCleanupException` co
 
 Authentication parses the bounded credential before lookup, locks the located token row, reloads its scopes/state, verifies the HMAC and checks revocation while holding the row lock. Successful authentication writes `last_used_at` immediately when absent, then at most once per 15 minutes. The write increments optimistic `version`; the absolute source of truth remains the database row. Tokens have no automatic expiry in this MVP and remain valid until manual revoke, but a row whose creation or last-use timestamp is in the future fails closed.
 
+Authentication, including the coalesced usage write, runs as one execution-strategy transaction.
+After an ambiguous successful commit, replay observes the already-updated timestamp and does not
+advance the version twice.
+
 ### Revoke
 
 Revoke locks and selects by both organization and token ID. A missing token and a token owned by another organization produce the same `KeyNotFoundException`. An active token requires the exact expected version and otherwise throws `DbUpdateConcurrencyException`. The first accepted revoke writes UTC revoke metadata, clears its active slot and appends one event. Repeating revoke for that same organization/token is idempotent regardless of the old expected version and creates no duplicate event.
+
+Revoke uses one stable audit identifier inside a complete execution-strategy transaction. A replay
+after an ambiguous commit observes the revoked row and returns idempotently; the append-only event
+remains singular.
+
+## Cloud HTTP boundary
+
+Active owners manage safe metadata at `GET /api/admin/integration-tokens`, issue a token at
+`POST /api/admin/integration-tokens`, and revoke at
+`POST /api/admin/integration-tokens/{id}/revoke`. Unsafe Admin calls require the exact configured
+Origin and `X-Puntiro-CSRF`; create additionally requires a TOTP-backed session freshness timestamp
+not older than five minutes. The raw bearer appears only in a successful `201` create response.
+
+Integration use cases use the dedicated `IntegrationToken` Bearer scheme and the closed policies
+`integration.shipments.read` and `integration.shipments.write`. Exactly one bounded canonical
+`Authorization: Bearer ...` value is accepted. The Admin cookie is never a fallback for `/api/v1`.
+The organization and scopes come only from the verified durable token, and active organization plus
+revocation state are checked for every request. Successful scope authorization establishes the
+request-scoped tenant context from that token ID and organization, never from request input. A fixed
+one-minute window permits 120 requests per
+verified public-ID/direct-peer-IP partition; malformed or unknown credentials share a direct-IP
+partition. Forwarded IP headers are deliberately ignored until deployment defines a trusted proxy.
 
 ## Runtime and migrations
 

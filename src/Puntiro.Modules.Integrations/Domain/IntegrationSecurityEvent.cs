@@ -51,8 +51,16 @@ internal sealed class IntegrationSecurityEvent
         Guid actorUserId,
         Guid tokenId,
         DateTimeOffset occurredAtUtc) =>
+        Created(Guid.CreateVersion7(), organizationId, actorUserId, tokenId, occurredAtUtc);
+
+    internal static IntegrationSecurityEvent Created(
+        Guid eventId,
+        Guid organizationId,
+        Guid actorUserId,
+        Guid tokenId,
+        DateTimeOffset occurredAtUtc) =>
         new(
-            Guid.CreateVersion7(),
+            eventId,
             organizationId,
             actorUserId,
             tokenId,
@@ -65,8 +73,16 @@ internal sealed class IntegrationSecurityEvent
         Guid actorUserId,
         Guid tokenId,
         DateTimeOffset occurredAtUtc) =>
+        Revoked(Guid.CreateVersion7(), organizationId, actorUserId, tokenId, occurredAtUtc);
+
+    internal static IntegrationSecurityEvent Revoked(
+        Guid eventId,
+        Guid organizationId,
+        Guid actorUserId,
+        Guid tokenId,
+        DateTimeOffset occurredAtUtc) =>
         new(
-            Guid.CreateVersion7(),
+            eventId,
             organizationId,
             actorUserId,
             tokenId,

@@ -107,6 +107,10 @@ internal sealed class StubTenantAccessService : ITenantAccessService
         Guid organizationId,
         Guid userId,
         CancellationToken cancellationToken) => Task.FromResult(true);
+
+    public Task<bool> IsOrganizationActiveAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken) => Task.FromResult(true);
 }
 
 internal sealed class StubTenancyProvisioningService : ITenancyProvisioningService

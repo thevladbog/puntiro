@@ -35,116 +35,37 @@ internal sealed class IntegrationTokenService(
         Exception? lastRetriableError = null;
         for (var attempt = 1; attempt <= MaximumCreationAttempts; attempt++)
         {
-            IssuedIntegrationTokenMaterial? material = null;
-            IntegrationToken? token = null;
-            IIntegrationTokenTransaction? transaction = null;
-            ExceptionDispatchInfo? bodyFailure = null;
-            Exception? disposalFailure = null;
-            var commitConfirmed = false;
+            var material = tokenCodec.Issue();
+            var tokenId = Guid.CreateVersion7();
+            var eventId = Guid.CreateVersion7();
+            var createdAt = timeProvider.GetUtcNow();
             try
             {
                 try
                 {
-                    transaction = await transactionFactory.BeginSerializableAsync(
-                        cancellationToken);
-                    var activeSlots = await context.IntegrationTokens
-                        .AsNoTracking()
-                        .Where(item =>
-                            item.OrganizationId == command.OrganizationId &&
-                            item.RevokedAtUtc == null)
-                        .Select(item => item.ActiveSlot)
-                        .ToListAsync(cancellationToken);
-                    if (activeSlots.Count >= MaximumActiveTokens)
+                    var strategy = context.Database.CreateExecutionStrategy();
+                    var metadata = await strategy.ExecuteAsync(async retryToken =>
                     {
-                        throw new ActiveTokenLimitException();
-                    }
+                        context.ChangeTracker.Clear();
+                        var committed = await TryReadCommittedCreationAsync(
+                            tokenId,
+                            eventId,
+                            command,
+                            displayName,
+                            scopes,
+                            material.PublicId,
+                            retryToken);
+                        return committed ?? await CreateAttemptAsync(
+                            tokenId,
+                            eventId,
+                            createdAt,
+                            command,
+                            displayName,
+                            scopes,
+                            material,
+                            retryToken);
+                    }, cancellationToken);
 
-                    var activeSlot = activeSlots.Contains((short?)1) ? (short)2 : (short)1;
-                    material = tokenCodec.Issue();
-                    var now = timeProvider.GetUtcNow();
-                    token = IntegrationToken.Issue(
-                        Guid.CreateVersion7(),
-                        material.PublicId,
-                        command.OrganizationId,
-                        displayName,
-                        material.SecretVerifier,
-                        material.KeyVersion,
-                        command.CreatedByUserId,
-                        now,
-                        scopes,
-                        activeSlot);
-                    context.IntegrationTokens.Add(token);
-                    context.SecurityEvents.Add(IntegrationSecurityEvent.Created(
-                        command.OrganizationId,
-                        command.CreatedByUserId,
-                        token.Id,
-                        now));
-                    await context.SaveChangesAsync(cancellationToken);
-                    await transaction.CommitAsync(cancellationToken);
-                    commitConfirmed = true;
-                }
-                catch (Exception exception)
-                {
-                    bodyFailure = ExceptionDispatchInfo.Capture(exception);
-                }
-
-                if (transaction is not null)
-                {
-                    try
-                    {
-                        await transaction.DisposeAsync();
-                    }
-                    catch (Exception exception)
-                    {
-                        disposalFailure = exception;
-                    }
-                }
-
-                if (bodyFailure is not null)
-                {
-                    var primaryException = bodyFailure.SourceException;
-                    CleanupFailedCreationAttempt(token);
-                    if (disposalFailure is not null)
-                    {
-                        throw new IntegrationTokenAttemptCleanupException(
-                            primaryException,
-                            disposalFailure);
-                    }
-
-                    if (!IsRetriableCreationFailure(primaryException))
-                    {
-                        bodyFailure.Throw();
-                    }
-
-                    lastRetriableError = primaryException;
-                    if (attempt == MaximumCreationAttempts)
-                    {
-                        throw new IntegrationTokenCreationConflictException(primaryException);
-                    }
-
-                    continue;
-                }
-
-                if (disposalFailure is not null)
-                {
-                    CleanupFailedCreationAttempt(token);
-                    throw new IntegrationTokenCommittedWithoutCredentialException(
-                        token?.Id ?? throw new InvalidOperationException(
-                            "A committed integration token was not available."),
-                        command.OrganizationId,
-                        disposalFailure);
-                }
-
-                if (!commitConfirmed || token is null || material is null)
-                {
-                    throw new InvalidOperationException(
-                        "Integration token creation ended without a committed result.");
-                }
-
-                try
-                {
-                    var metadata = ToMetadata(token);
-                    DetachAndClear(token);
                     var rawToken = material.TakeRawToken();
                     try
                     {
@@ -156,24 +77,208 @@ internal sealed class IntegrationTokenService(
                         throw;
                     }
                 }
-                catch (Exception exception) when (
-                    exception is not IntegrationTokenCommittedWithoutCredentialException)
+                catch (Exception exception) when (IsRetriableCreationFailure(exception))
                 {
-                    CleanupFailedCreationAttempt(token);
-                    throw new IntegrationTokenCommittedWithoutCredentialException(
-                        token.Id,
-                        token.OrganizationId,
-                        exception);
+                    lastRetriableError = exception;
+                    if (attempt == MaximumCreationAttempts)
+                    {
+                        throw new IntegrationTokenCreationConflictException(exception);
+                    }
                 }
             }
             finally
             {
-                material?.Dispose();
+                material.Dispose();
             }
         }
 
         throw new IntegrationTokenCreationConflictException(
             lastRetriableError ?? new InvalidOperationException("No creation attempt was made."));
+    }
+
+    private async Task<IntegrationTokenMetadata> CreateAttemptAsync(
+        Guid tokenId,
+        Guid eventId,
+        DateTimeOffset createdAt,
+        CreateIntegrationToken command,
+        string displayName,
+        IReadOnlySet<IntegrationScope> scopes,
+        IssuedIntegrationTokenMaterial material,
+        CancellationToken cancellationToken)
+    {
+        IntegrationToken? token = null;
+        IIntegrationTokenTransaction? transaction = null;
+        ExceptionDispatchInfo? bodyFailure = null;
+        Exception? disposalFailure = null;
+        var commitConfirmed = false;
+        try
+        {
+            try
+            {
+                transaction = await transactionFactory.BeginSerializableAsync(cancellationToken);
+                var activeSlots = await context.IntegrationTokens
+                    .AsNoTracking()
+                    .Where(item =>
+                        item.OrganizationId == command.OrganizationId &&
+                        item.RevokedAtUtc == null)
+                    .Select(item => item.ActiveSlot)
+                    .ToListAsync(cancellationToken);
+                if (activeSlots.Count >= MaximumActiveTokens)
+                {
+                    throw new ActiveTokenLimitException();
+                }
+
+                var activeSlot = activeSlots.Contains((short?)1) ? (short)2 : (short)1;
+                token = IntegrationToken.Issue(
+                    tokenId,
+                    material.PublicId,
+                    command.OrganizationId,
+                    displayName,
+                    material.SecretVerifier,
+                    material.KeyVersion,
+                    command.CreatedByUserId,
+                    createdAt,
+                    scopes,
+                    activeSlot);
+                context.IntegrationTokens.Add(token);
+                context.SecurityEvents.Add(IntegrationSecurityEvent.Created(
+                    eventId,
+                    command.OrganizationId,
+                    command.CreatedByUserId,
+                    token.Id,
+                    createdAt));
+                await context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                commitConfirmed = true;
+            }
+            catch (Exception exception)
+            {
+                bodyFailure = ExceptionDispatchInfo.Capture(exception);
+            }
+
+            if (transaction is not null)
+            {
+                try
+                {
+                    await transaction.DisposeAsync();
+                }
+                catch (Exception exception)
+                {
+                    disposalFailure = exception;
+                }
+            }
+
+            if (bodyFailure is not null)
+            {
+                var primaryException = bodyFailure.SourceException;
+                CleanupFailedCreationAttempt(token);
+                if (disposalFailure is not null)
+                {
+                    throw new IntegrationTokenAttemptCleanupException(
+                        primaryException,
+                        disposalFailure);
+                }
+
+                bodyFailure.Throw();
+            }
+
+            if (disposalFailure is not null)
+            {
+                CleanupFailedCreationAttempt(token);
+                throw new IntegrationTokenCommittedWithoutCredentialException(
+                    token?.Id ?? tokenId,
+                    command.OrganizationId,
+                    disposalFailure);
+            }
+
+            if (!commitConfirmed || token is null)
+            {
+                throw new InvalidOperationException(
+                    "Integration token creation ended without a committed result.");
+            }
+
+            try
+            {
+                var metadata = ToMetadata(token);
+                DetachAndClear(token);
+                return metadata;
+            }
+            catch (Exception exception) when (
+                exception is not IntegrationTokenCommittedWithoutCredentialException)
+            {
+                CleanupFailedCreationAttempt(token);
+                throw new IntegrationTokenCommittedWithoutCredentialException(
+                    token.Id,
+                    token.OrganizationId,
+                    exception);
+            }
+        }
+        catch
+        {
+            CleanupFailedCreationAttempt(token);
+            throw;
+        }
+    }
+
+    private async Task<IntegrationTokenMetadata?> TryReadCommittedCreationAsync(
+        Guid tokenId,
+        Guid eventId,
+        CreateIntegrationToken command,
+        string displayName,
+        IReadOnlySet<IntegrationScope> scopes,
+        string publicId,
+        CancellationToken cancellationToken)
+    {
+        var row = await context.IntegrationTokens
+            .AsNoTracking()
+            .Where(item => item.Id == tokenId)
+            .Select(item => new
+            {
+                item.Id,
+                item.PublicId,
+                item.OrganizationId,
+                item.CreatedByUserId,
+                item.DisplayName,
+                Scopes = item.Scopes.Select(scope => scope.Scope).ToArray(),
+                item.CreatedAtUtc,
+                item.LastUsedAtUtc,
+                item.RevokedAtUtc,
+                item.Version
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (row is null)
+        {
+            return null;
+        }
+
+        var hasEvent = await context.SecurityEvents.AsNoTracking().AnyAsync(
+            item => item.Id == eventId &&
+                item.TokenId == tokenId &&
+                item.OrganizationId == command.OrganizationId &&
+                item.ActorUserId == command.CreatedByUserId,
+            cancellationToken);
+        if (!hasEvent ||
+            row.OrganizationId != command.OrganizationId ||
+            row.CreatedByUserId != command.CreatedByUserId ||
+            !string.Equals(row.PublicId, publicId, StringComparison.Ordinal) ||
+            !string.Equals(row.DisplayName, displayName, StringComparison.Ordinal) ||
+            !row.Scopes.ToHashSet().SetEquals(scopes))
+        {
+            throw new IntegrationTokenCommittedWithoutCredentialException(
+                tokenId,
+                command.OrganizationId,
+                new InvalidOperationException("Integration token commit verification failed."));
+        }
+
+        return new IntegrationTokenMetadata(
+            row.Id,
+            row.PublicId,
+            row.DisplayName,
+            row.Scopes.ToFrozenSet(),
+            row.CreatedAtUtc,
+            row.LastUsedAtUtc,
+            row.RevokedAtUtc,
+            row.Version);
     }
 
     public async Task<IReadOnlyList<IntegrationTokenMetadata>> ListAsync(
@@ -226,6 +331,43 @@ internal sealed class IntegrationTokenService(
             throw new ArgumentOutOfRangeException(nameof(expectedVersion));
         }
 
+        var operationEventId = Guid.CreateVersion7();
+        var strategy = context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async retryToken =>
+        {
+            context.ChangeTracker.Clear();
+            var existing = await context.IntegrationTokens.AsNoTracking()
+                .Where(item => item.Id == tokenId && item.OrganizationId == organizationId)
+                .Select(item => new { item.RevokedAtUtc })
+                .SingleOrDefaultAsync(retryToken);
+            if (existing is null)
+            {
+                throw new KeyNotFoundException("Integration token was not found.");
+            }
+
+            if (existing.RevokedAtUtc is not null)
+            {
+                return;
+            }
+
+            await RevokeAttemptAsync(
+                organizationId,
+                tokenId,
+                revokedByUserId,
+                expectedVersion,
+                operationEventId,
+                retryToken);
+        }, cancellationToken);
+    }
+
+    private async Task RevokeAttemptAsync(
+        Guid organizationId,
+        Guid tokenId,
+        Guid revokedByUserId,
+        long expectedVersion,
+        Guid operationEventId,
+        CancellationToken cancellationToken)
+    {
         IntegrationToken? token = null;
         try
         {
@@ -237,12 +379,8 @@ internal sealed class IntegrationTokenService(
                 cancellationToken);
             token = await context.IntegrationTokens.SingleOrDefaultAsync(
                 item => item.Id == tokenId && item.OrganizationId == organizationId,
-                cancellationToken);
-            if (token is null)
-            {
-                throw new KeyNotFoundException("Integration token was not found.");
-            }
-
+                cancellationToken) ?? throw new KeyNotFoundException(
+                    "Integration token was not found.");
             await context.Entry(token).ReloadAsync(cancellationToken);
             if (token.RevokedAtUtc is not null)
             {
@@ -255,10 +393,10 @@ internal sealed class IntegrationTokenService(
             {
                 throw new DbUpdateConcurrencyException("Integration token version does not match.");
             }
-
             var now = timeProvider.GetUtcNow();
             token.Revoke(now, revokedByUserId, ManualRevokeReason);
             context.SecurityEvents.Add(IntegrationSecurityEvent.Revoked(
+                operationEventId,
                 organizationId,
                 revokedByUserId,
                 token.Id,
@@ -289,6 +427,22 @@ internal sealed class IntegrationTokenService(
         }
 
         CryptographicOperations.ZeroMemory(parsedSecret);
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async retryToken =>
+        {
+            context.ChangeTracker.Clear();
+            return await AuthenticateAttemptAsync(
+                presentedToken,
+                publicId,
+                retryToken);
+        }, cancellationToken);
+    }
+
+    private async Task<IntegrationPrincipal?> AuthenticateAttemptAsync(
+        string presentedToken,
+        string publicId,
+        CancellationToken cancellationToken)
+    {
         IntegrationToken? token = null;
         try
         {
@@ -398,6 +552,12 @@ internal sealed class IntegrationTokenService(
 
     private static bool IsRetriableCreationFailure(Exception exception)
     {
+        if (exception is IntegrationTokenAttemptCleanupException or
+            IntegrationTokenCommittedWithoutCredentialException)
+        {
+            return false;
+        }
+
         var postgres = FindPostgresException(exception);
         if (postgres is null)
         {

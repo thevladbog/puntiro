@@ -74,7 +74,11 @@ public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
     [Fact]
     public async Task Committed_create_disposal_failure_never_transfers_raw_or_retries()
     {
-        var disposalFailure = new InjectedTransactionDisposalException();
+        var disposalFailure = new PostgresException(
+            "Injected transient transaction disposal failure.",
+            "ERROR",
+            "ERROR",
+            PostgresErrorCodes.SerializationFailure);
         FailingDisposeIntegrationTokenTransactionFactory? transactionFactory = null;
         TrackingIntegrationTokenCodec? trackingCodec = null;
         await using var scope = await IntegrationTestScope.CreateAsync(
@@ -635,8 +639,6 @@ internal sealed class FailFirstIntegrationTokenCommitInterceptor(Exception failu
 }
 
 internal sealed class InjectedCreateFailureException : Exception;
-
-internal sealed class InjectedTransactionDisposalException : Exception;
 
 internal sealed class TrackingIntegrationTokenCodec(IIntegrationTokenCodec inner)
     : IIntegrationTokenCodec

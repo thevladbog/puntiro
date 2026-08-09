@@ -56,6 +56,17 @@ internal sealed class TenantAccessService(TenancyDbContext context) : ITenantAcc
             .AnyAsync(cancellationToken);
     }
 
+    public async Task<bool> IsOrganizationActiveAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken)
+    {
+        EnsureNotEmpty(organizationId, nameof(organizationId));
+        return await context.Organizations.AsNoTracking().AnyAsync(
+            organization => organization.Id == organizationId &&
+                organization.Status == OrganizationStatus.Active,
+            cancellationToken);
+    }
+
     private static void EnsureNotEmpty(Guid value, string parameterName)
     {
         if (value == Guid.Empty)

@@ -69,12 +69,14 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
 
     internal ProductionCloudWebApplicationFactory CreateProductionFactory(
         IInterceptor? identityInterceptor = null,
-        bool includeRetainedIntegrationKey = true) =>
+        bool includeRetainedIntegrationKey = true,
+        IInterceptor? integrationInterceptor = null) =>
         new(
             Settings(includeRetainedIntegrationKey),
             Time,
             _logs,
-            identityInterceptor);
+            identityInterceptor,
+            integrationInterceptor);
 
     public string CurrentTotp() => IdentityTotp.Generate(
         _totpSecret,
@@ -119,7 +121,8 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         CloudHostSettings settings,
         TimeProvider time,
         ILoggerProvider logs,
-        IInterceptor? identityInterceptor = null)
+        IInterceptor? identityInterceptor = null,
+        IInterceptor? integrationInterceptor = null)
     {
         builder.UseEnvironment(environment);
         var values = new Dictionary<string, string>
@@ -157,6 +160,12 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
             {
                 services.AddDbContext<IdentityDbContext>(options =>
                     options.AddInterceptors(identityInterceptor));
+            }
+
+            if (integrationInterceptor is not null)
+            {
+                services.AddDbContext<IntegrationsDbContext>(options =>
+                    options.AddInterceptors(integrationInterceptor));
             }
         });
     }
@@ -273,7 +282,8 @@ internal sealed class ProductionCloudWebApplicationFactory(
     CloudHostSettings settings,
     TimeProvider time,
     ILoggerProvider logs,
-    IInterceptor? identityInterceptor)
+    IInterceptor? identityInterceptor,
+    IInterceptor? integrationInterceptor)
     : WebApplicationFactory<cloud::Program>
 {
     public HttpClient CreateSecureClient()
@@ -290,7 +300,8 @@ internal sealed class ProductionCloudWebApplicationFactory(
             settings,
             time,
             logs,
-            identityInterceptor);
+            identityInterceptor,
+            integrationInterceptor);
 }
 
 internal sealed class FailFirstIdentitySecurityEventCommandInterceptor : DbCommandInterceptor

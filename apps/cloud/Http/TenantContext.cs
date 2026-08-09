@@ -5,9 +5,11 @@ namespace Puntiro.Cloud.Http;
 public sealed class TenantContext
 {
     public Guid UserId { get; private set; }
+    public Guid IntegrationTokenId { get; private set; }
     public Guid OrganizationId { get; private set; }
     public string Role { get; private set; } = string.Empty;
     public bool IsEstablished { get; private set; }
+    public bool IsIntegration { get; private set; }
 
     internal void Establish(Guid userId, Guid organizationId, string role)
     {
@@ -23,8 +25,31 @@ public sealed class TenantContext
         }
 
         UserId = userId;
+        IntegrationTokenId = Guid.Empty;
         OrganizationId = organizationId;
         Role = role;
+        IsIntegration = false;
+        IsEstablished = true;
+    }
+
+    internal void EstablishIntegration(Guid tokenId, Guid organizationId)
+    {
+        if (tokenId == Guid.Empty || organizationId == Guid.Empty)
+        {
+            throw new InvalidOperationException("Trusted integration tenant context is invalid.");
+        }
+
+        if (IsEstablished && (!IsIntegration || IntegrationTokenId != tokenId ||
+                OrganizationId != organizationId))
+        {
+            throw new InvalidOperationException("Tenant context cannot be changed during a request.");
+        }
+
+        UserId = Guid.Empty;
+        IntegrationTokenId = tokenId;
+        OrganizationId = organizationId;
+        Role = string.Empty;
+        IsIntegration = true;
         IsEstablished = true;
     }
 }

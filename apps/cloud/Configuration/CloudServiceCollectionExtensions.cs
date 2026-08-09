@@ -28,6 +28,8 @@ namespace Puntiro.Cloud.Configuration;
 public static class CloudServiceCollectionExtensions
 {
     public const string AdminOwnerPolicy = "AdminOwner";
+    public const string IntegrationShipmentsReadPolicy = "integration.shipments.read";
+    public const string IntegrationShipmentsWritePolicy = "integration.shipments.write";
 
     public static IServiceCollection AddPuntiroCloud(
         this IServiceCollection services,
@@ -109,17 +111,39 @@ public static class CloudServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<TenantContext>();
         services.AddSingleton<AdminRateLimitService>();
+        services.AddSingleton<IntegrationBearerRateLimitService>();
         services.AddAuthentication(AdminSessionAuthenticationHandler.AuthenticationScheme)
             .AddScheme<AuthenticationSchemeOptions, AdminSessionAuthenticationHandler>(
                 AdminSessionAuthenticationHandler.AuthenticationScheme,
+                _ => { })
+            .AddScheme<AuthenticationSchemeOptions, IntegrationBearerAuthenticationHandler>(
+                IntegrationBearerAuthenticationHandler.AuthenticationScheme,
                 _ => { });
-        services.AddAuthorizationBuilder().AddPolicy(AdminOwnerPolicy, policy =>
-        {
-            policy.AddAuthenticationSchemes(AdminSessionAuthenticationHandler.AuthenticationScheme);
-            policy.RequireAuthenticatedUser();
-            policy.AddRequirements(new OwnerRequirement());
-        });
+        services.AddAuthorizationBuilder()
+            .AddPolicy(AdminOwnerPolicy, policy =>
+            {
+                policy.AddAuthenticationSchemes(AdminSessionAuthenticationHandler.AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new OwnerRequirement());
+            })
+            .AddPolicy(IntegrationShipmentsReadPolicy, policy =>
+            {
+                policy.AddAuthenticationSchemes(
+                    IntegrationBearerAuthenticationHandler.AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new IntegrationScopeRequirement(
+                    Puntiro.Modules.Integrations.Domain.IntegrationScope.ShipmentsRead));
+            })
+            .AddPolicy(IntegrationShipmentsWritePolicy, policy =>
+            {
+                policy.AddAuthenticationSchemes(
+                    IntegrationBearerAuthenticationHandler.AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new IntegrationScopeRequirement(
+                    Puntiro.Modules.Integrations.Domain.IntegrationScope.ShipmentsWrite));
+            });
         services.AddScoped<IAuthorizationHandler, OwnerAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, IntegrationScopeAuthorizationHandler>();
         services.AddHealthChecks().AddCheck<CloudReadinessHealthCheck>("cloud-readiness");
         services.AddOpenApi("v1", openApi =>
         {

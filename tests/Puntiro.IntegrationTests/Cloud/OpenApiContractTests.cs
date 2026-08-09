@@ -66,4 +66,41 @@ public sealed class OpenApiContractTests(CloudWebApplicationFactory factory)
                 StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    [Fact]
+    public async Task V1_distinguishes_admin_token_management_from_scoped_integration_bearer()
+    {
+        using var client = factory.CreateSecureClient();
+        var json = await client.GetStringAsync(
+            "/openapi/v1.json",
+            TestContext.Current.CancellationToken);
+        using var document = JsonDocument.Parse(json);
+        var schemes = document.RootElement.GetProperty("components").GetProperty("securitySchemes");
+        var integration = schemes.GetProperty("IntegrationToken");
+        Assert.Equal("http", integration.GetProperty("type").GetString());
+        Assert.Equal("bearer", integration.GetProperty("scheme").GetString());
+
+        var adminCreate = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/admin/integration-tokens")
+            .GetProperty("post");
+        Assert.Equal(
+            "AdminSession",
+            adminCreate.GetProperty("security")[0].EnumerateObject().Single().Name);
+        Assert.Single(
+            adminCreate.GetProperty("parameters").EnumerateArray(),
+            parameter => parameter.GetProperty("name").GetString() == "X-Puntiro-CSRF");
+
+        var integrationRead = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/test/shipments/read")
+            .GetProperty("get");
+        var requirement = integrationRead.GetProperty("security")[0]
+            .GetProperty("IntegrationToken")
+            .EnumerateArray()
+            .Select(item => item.GetString())
+            .ToArray();
+        Assert.Equal(new[] { "shipments.read" }, requirement);
+        Assert.False(integrationRead.TryGetProperty("parameters", out _));
+        Assert.DoesNotContain("pnt_live_", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"example\"", json, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
+using Puntiro.Cloud.Configuration;
 
 namespace Puntiro.Cloud.OpenApi;
 
@@ -12,10 +13,28 @@ public sealed class AuthenticationOperationTransformer : IOpenApiOperationTransf
         CancellationToken cancellationToken)
     {
         var metadata = context.Description.ActionDescriptor.EndpointMetadata;
-        if (metadata.OfType<IAuthorizeData>().Any() &&
+        var authorization = metadata.OfType<IAuthorizeData>().ToArray();
+        if (authorization.Length > 0 &&
             !metadata.OfType<IAllowAnonymous>().Any())
         {
             operation.Security ??= [];
+            var integrationScope = authorization
+                .Select(item => item.Policy)
+                .FirstOrDefault(policy => policy is
+                    CloudServiceCollectionExtensions.IntegrationShipmentsReadPolicy or
+                    CloudServiceCollectionExtensions.IntegrationShipmentsWritePolicy);
+            if (integrationScope is not null)
+            {
+                operation.Security.Add(new OpenApiSecurityRequirement
+                {
+                    [new OpenApiSecuritySchemeReference(
+                        "IntegrationToken",
+                        context.Document,
+                        null)] = [integrationScope.Replace("integration.", string.Empty, StringComparison.Ordinal)]
+                });
+                return Task.CompletedTask;
+            }
+
             operation.Security.Add(new OpenApiSecurityRequirement
             {
                 [new OpenApiSecuritySchemeReference("AdminSession", context.Document, null)] = []

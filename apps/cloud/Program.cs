@@ -1,5 +1,6 @@
 using Puntiro.Contracts;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Puntiro.Cloud.Auth;
 using Puntiro.Cloud.Configuration;
 using Puntiro.Cloud.Endpoints;
 using Puntiro.Cloud.Http;
@@ -58,6 +59,25 @@ app.MapGet("/health/ready", async (
 }).WithName("CloudReadiness").ExcludeFromDescription();
 
 app.MapAdminAuthEndpoints();
+app.MapIntegrationTokenEndpoints();
+if (app.Environment.IsEnvironment("Testing"))
+{
+    app.MapGet("/api/v1/test/shipments/read", (TenantContext tenant) =>
+        tenant.IsEstablished && tenant.IsIntegration
+            ? Results.Ok(new
+            {
+                tokenId = tenant.IntegrationTokenId,
+                organizationId = tenant.OrganizationId
+            })
+            : Results.Unauthorized())
+        .WithName("IntegrationShipmentsReadProbe")
+        .WithTags("Integration Test Probe")
+        .RequireAuthorization(CloudServiceCollectionExtensions.IntegrationShipmentsReadPolicy);
+    app.MapPost("/api/v1/test/shipments/write", () => Results.NoContent())
+        .WithName("IntegrationShipmentsWriteProbe")
+        .WithTags("Integration Test Probe")
+        .RequireAuthorization(CloudServiceCollectionExtensions.IntegrationShipmentsWritePolicy);
+}
 app.MapOpenApi();
 
 app.Run();
