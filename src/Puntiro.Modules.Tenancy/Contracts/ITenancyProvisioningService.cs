@@ -23,11 +23,28 @@ public interface ITenancyProvisioningService
         Guid userId,
         CancellationToken cancellationToken);
 
+    Task<ITrustedActiveOwnerMutationLease?> TryAcquireActiveOwnerMutationLeaseForTrustedProvisioningAsync(
+        Guid organizationId,
+        Guid userId,
+        CancellationToken cancellationToken);
+
     Task ActivateAsync(
         Guid organizationId,
         TenancyAuditContext auditContext,
         CancellationToken cancellationToken);
+
+    Task SuspendAsync(
+        Guid organizationId,
+        TenancyAuditContext auditContext,
+        CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Holds the serialized Tenancy authorization boundary for a trusted, non-HTTP
+/// provisioning or recovery composition. The lease carries no authorization
+/// data and must remain held across the corresponding Identity mutation.
+/// </summary>
+public interface ITrustedActiveOwnerMutationLease : IAsyncDisposable;
 
 public sealed record TenancyAuditContext
 {

@@ -24,6 +24,8 @@ dotnet run --project tools/Puntiro.Provisioning --configuration Release --no-res
 
 Puntiro normalizes the slug and email through their canonical module rules, resolves only a generic optional identifier through trusted CLI composition, and verifies the active owner membership. These read-only lookups do not authenticate, consume a recovery code, create an event, or change a session.
 
+Before any prompt, the same read-only cryptographic readiness check used by bootstrap verifies required historical HMAC keys and every active TOTP payload. An unavailable historical key or unreadable payload is an infrastructure failure (`5`), not invalid credentials (`4`), and causes no prompt or mutation.
+
 The CLI then reads the password and unused recovery code without echo. After both are verified, it shows a pending TOTP enrollment URI and replacement recovery-code batch once. Enroll the new URI, store the new codes safely, and enter the first new TOTP code without echo.
 
 ## Atomic behavior
@@ -37,6 +39,8 @@ Successful completion performs one Identity transaction that:
 - removes every old recovery code and stores only the replacement batch verifiers;
 - advances the authentication epoch and revokes every existing session;
 - appends a redacted security event.
+
+Immediately before that Identity transaction, the CLI acquires a trusted Tenancy mutation lease. The lease locks and reloads the organization and exact owner membership, verifies both remain active, and stays held through the Identity commit. Concurrent organization suspension or owner revocation therefore either commits first and prevents the reset, or waits until the authorized reset commits; a stale owner lookup can never authorize factor rotation.
 
 An invalid first new TOTP code returns exit `4`; the old TOTP/recovery credentials and sessions remain unchanged. If the process stops before commit, discard the displayed candidate material and rerun with the same still-unused old recovery code. If completion may have committed but the terminal result was lost, first verify session revocation and credential state through an approved administrative investigation; do not repeatedly guess with old or new secrets.
 

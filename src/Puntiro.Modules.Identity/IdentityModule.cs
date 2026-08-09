@@ -43,6 +43,7 @@ public static class IdentityModule
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<ITotpService, Rfc6238Totp>();
         services.AddScoped<TotpSecretProtector>();
+        services.AddScoped<IDataProtectionKeyRingReadiness, DataProtectionKeyRingReadiness>();
         services.AddScoped<SessionTokenCodec>();
         services.AddScoped<IRecoveryCodeService>(provider =>
         {
@@ -60,6 +61,7 @@ public static class IdentityModule
             }
         });
         services.AddScoped<IIdentityProvisioningService, IdentityProvisioningService>();
+        services.AddScoped<IIdentityProvisioningReadinessService, IdentityProvisioningReadinessService>();
         services.AddScoped<IAdminAuthenticationService, AdminAuthenticationService>();
         services.AddScoped<IAdminSessionService, AdminSessionService>();
         return services;

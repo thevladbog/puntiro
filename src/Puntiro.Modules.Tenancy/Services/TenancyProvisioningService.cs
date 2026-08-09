@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using Puntiro.Modules.Tenancy.Contracts;
 using Puntiro.Modules.Tenancy.Domain;
@@ -75,16 +76,14 @@ internal sealed class TenancyProvisioningService(
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         }
 
-        var organizationExists = await context.Organizations
-            .AsNoTracking()
-            .AnyAsync(item => item.Id == organizationId, cancellationToken);
-        if (!organizationExists)
-        {
-            throw new KeyNotFoundException("Organization was not found.");
-        }
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+        await LockOrganizationAsync(organizationId, cancellationToken);
+        _ = await LoadOrganizationAfterLockAsync(organizationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Organization was not found.");
 
         var existing = await context.Memberships
-            .AsNoTracking()
             .SingleOrDefaultAsync(
                 item => item.OrganizationId == organizationId && item.UserId == userId,
                 cancellationToken);
@@ -95,6 +94,7 @@ internal sealed class TenancyProvisioningService(
                 throw new InvalidOperationException("The existing owner membership is not active.");
             }
 
+            await transaction.CommitAsync(cancellationToken);
             return Snapshot(existing);
         }
 
@@ -108,22 +108,14 @@ internal sealed class TenancyProvisioningService(
         try
         {
             await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Snapshot(membership);
         }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
-            context.ChangeTracker.Clear();
-            var concurrent = await context.Memberships
-                .AsNoTracking()
-                .SingleAsync(
-                    item => item.OrganizationId == organizationId && item.UserId == userId,
-                    cancellationToken);
-            if (concurrent.Status != MembershipStatus.Active || concurrent.Role != MembershipRole.Owner)
-            {
-                throw new InvalidOperationException("The existing owner membership is not active.");
-            }
-
-            return Snapshot(concurrent);
+            throw new InvalidOperationException(
+                "The owner membership could not be created after serialization.",
+                exception);
         }
     }
 
@@ -224,6 +216,88 @@ internal sealed class TenancyProvisioningService(
         return Snapshot(membership);
     }
 
+    public async Task<ITrustedActiveOwnerMutationLease?> TryAcquireActiveOwnerMutationLeaseForTrustedProvisioningAsync(
+        Guid organizationId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        EnsureNotEmpty(organizationId, nameof(organizationId));
+        EnsureNotEmpty(userId, nameof(userId));
+
+        var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+        try
+        {
+            await LockOrganizationAsync(organizationId, cancellationToken);
+            var organization = await LoadOrganizationAfterLockAsync(organizationId, cancellationToken);
+            var membership = await LoadMembershipAfterLockAsync(
+                organizationId,
+                userId,
+                cancellationToken);
+            if (organization?.Status != OrganizationStatus.Active ||
+                membership is null ||
+                membership.Role != MembershipRole.Owner ||
+                membership.Status != MembershipStatus.Active)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                await transaction.DisposeAsync();
+                return null;
+            }
+
+            return new TrustedActiveOwnerMutationLease(transaction);
+        }
+        catch
+        {
+            await transaction.DisposeAsync();
+            throw;
+        }
+    }
+
+    public async Task SuspendAsync(
+        Guid organizationId,
+        TenancyAuditContext auditContext,
+        CancellationToken cancellationToken)
+    {
+        EnsureNotEmpty(organizationId, nameof(organizationId));
+        ArgumentNullException.ThrowIfNull(auditContext);
+
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+        await LockOrganizationAsync(organizationId, cancellationToken);
+        var organization = await LoadOrganizationAfterLockAsync(organizationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Organization was not found.");
+        var actorIsActiveOwner = await context.Memberships.AnyAsync(
+            item => item.OrganizationId == organizationId
+                && item.UserId == auditContext.ActorUserId
+                && item.Role == MembershipRole.Owner
+                && item.Status == MembershipStatus.Active,
+            cancellationToken);
+        if (!actorIsActiveOwner)
+        {
+            throw new InvalidOperationException("The suspension actor must be an active owner.");
+        }
+
+        if (organization.Status == OrganizationStatus.Suspended)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        organization.Suspend();
+        var now = timeProvider.GetUtcNow();
+        organization.MarkUpdated(now);
+        context.SecurityEvents.Add(TenancySecurityEvent.OrganizationSuspended(
+            Guid.CreateVersion7(),
+            organizationId,
+            auditContext.ActorUserId,
+            auditContext.TraceId,
+            now));
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private static bool IsUniqueViolation(DbUpdateException exception)
     {
         return exception.InnerException is PostgresException
@@ -304,5 +378,23 @@ internal sealed class TenancyProvisioningService(
             membership.Role,
             membership.Status,
             membership.Version);
+    }
+
+    private sealed class TrustedActiveOwnerMutationLease(
+        IDbContextTransaction transaction) : ITrustedActiveOwnerMutationLease
+    {
+        private IDbContextTransaction? _transaction = transaction;
+
+        public async ValueTask DisposeAsync()
+        {
+            var current = Interlocked.Exchange(ref _transaction, null);
+            if (current is null)
+            {
+                return;
+            }
+
+            await current.RollbackAsync(CancellationToken.None);
+            await current.DisposeAsync();
+        }
     }
 }

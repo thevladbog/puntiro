@@ -14,6 +14,8 @@ Use this runbook only from the private deployment environment. Puntiro does not 
 
 Do not put a password, TOTP value, recovery code, connection string, certificate password, or HMAC key on the command line. Do not paste a production secret into shell history. The 10-minute command timeout and one confirmation attempt are deliberate safety bounds.
 
+Before the first prompt or organization write, the CLI performs a read-only cryptographic readiness check. It verifies current HMAC-key usability, every key version still required by an unused recovery code or stored session verifier, a Data Protection round trip, and every active account TOTP payload against the configured persistent ring, certificate, and application name. Failure exits `5` without prompting or changing durable state. Restore the approved missing key material; do not delete historical rows or attempt a credential reset as a substitute.
+
 ## Command
 
 The identifiers below are dummy examples:

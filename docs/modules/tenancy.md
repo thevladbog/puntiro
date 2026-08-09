@@ -13,7 +13,7 @@ The module owns only schema `tenancy`. Its initial migration is `202608080001_In
 
 PostgreSQL enforces unique `organizations.slug`, unique `(memberships.organization_id, memberships.user_id)`, and the approved lowercase organization, membership-role, and membership-status values with check constraints. Unknown stored lifecycle values therefore fail closed. Foreign keys remain inside `tenancy`; there is deliberately no database foreign key from a membership to an Identity table.
 
-`TenancyDbContext` rejects modified or deleted tracked security events, and a PostgreSQL trigger rejects direct `UPDATE` or `DELETE` operations against `security_events`. Organization activation updates the organization and appends `organization.activated` in the same database transaction. The event contains no display name, email, credential material, or other personal data.
+`TenancyDbContext` rejects modified or deleted tracked security events, and a PostgreSQL trigger rejects direct `UPDATE` or `DELETE` operations against `security_events`. Organization activation and suspension update the organization and append their corresponding redacted event in the same database transaction. Events contain no display name, email, credential material, or other personal data.
 
 ## Normalization and lifecycle
 
@@ -37,11 +37,12 @@ An active organization must always retain at least one active owner. `RevokeOwne
 - create-or-find provisioning organization by normalized slug;
 - idempotent owner membership creation;
 - owner membership revocation that preserves the active-organization owner invariant;
-- owner-gated atomic organization activation with a required `TenancyAuditContext`.
+- owner-gated atomic organization activation and suspension with a required `TenancyAuditContext`;
+- a trusted active-owner mutation lease for non-public provisioning/recovery composition.
 
 `TenancyAuditContext` requires a non-empty opaque actor user ID and a 1–128 character trace ID. Trace IDs accept only ASCII letters, digits, `.`, `_`, `:`, and `-`; whitespace, separators, control characters, and unbounded text are rejected before database access. Callers must pass an already-redacted correlation value and must never put an email, credential, activation code, token, or other personal data in it. Activation verifies that this exact actor has an active owner membership in the same transaction before changing state or appending the event. Even an idempotent activation performs the actor check before returning.
 
-Activation and owner revocation use a PostgreSQL `ReadCommitted` transaction and acquire the organization row with `FOR UPDATE` before reading or changing memberships. The shared organization-first lock order serializes activation against revocation and serializes concurrent owner revocations, so at most one competing transition can use a given pre-change owner set. Membership lifecycle methods are aggregate-local transitions only; production persistence must invoke `RevokeOwnerMembershipAsync` rather than mutate a tracked `Membership` directly because the last-owner rule spans organization and membership rows.
+Activation, suspension, owner creation, owner revocation, and the trusted mutation lease use a PostgreSQL `ReadCommitted` transaction and acquire the organization row with `FOR UPDATE` before reading or changing memberships. The shared organization-first lock order serializes every state-changing path. The lease reloads the exact organization and owner after locking and remains held across the caller's Identity reset commit; it exposes no identity or authorization data and is not an HTTP authorization contract. Membership lifecycle methods are aggregate-local transitions only; production persistence must invoke the service rather than mutate tracked entities directly because authorization and last-owner rules span organization and membership rows.
 
 `ITenantAccessService` derives tenant access from active memberships joined to active organizations:
 

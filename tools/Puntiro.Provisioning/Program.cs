@@ -39,6 +39,7 @@ internal static class ProvisioningProgram
                     scope.ServiceProvider.GetRequiredService<ITenancyProvisioningService>(),
                     scope.ServiceProvider.GetRequiredService<ITenantAccessService>(),
                     scope.ServiceProvider.GetRequiredService<IIdentityProvisioningService>(),
+                    scope.ServiceProvider.GetRequiredService<IIdentityProvisioningReadinessService>(),
                     terminal).RunAsync(
                         parsed.Arguments["organization-name"],
                         parsed.Arguments["organization-slug"],
@@ -48,6 +49,7 @@ internal static class ProvisioningProgram
                     scope.ServiceProvider.GetRequiredService<ITenancyProvisioningService>(),
                     scope.ServiceProvider.GetRequiredService<ITenantAccessService>(),
                     scope.ServiceProvider.GetRequiredService<IIdentityProvisioningService>(),
+                    scope.ServiceProvider.GetRequiredService<IIdentityProvisioningReadinessService>(),
                     terminal).RunAsync(
                         parsed.Arguments["organization-slug"],
                         parsed.Arguments["email"],

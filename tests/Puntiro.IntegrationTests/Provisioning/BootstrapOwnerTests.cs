@@ -237,20 +237,34 @@ internal sealed class ProvisioningTestScope : IAsyncDisposable
     internal IServiceProvider Services => _serviceScope.ServiceProvider;
     internal ManualTimeProvider Time { get; }
 
-    internal static async Task<ProvisioningTestScope> CreateAsync(string connectionString)
+    internal static async Task<ProvisioningTestScope> CreateAsync(
+        string connectionString,
+        IdentityKeyOptions? keyOptions = null,
+        IDataProtectionProvider? dataProtectionProvider = null,
+        bool dataProtectionKeyRingReady = true,
+        bool migrate = true,
+        DateTimeOffset? now = null)
     {
-        var time = new ManualTimeProvider(new DateTimeOffset(2026, 8, 8, 10, 0, 0, TimeSpan.Zero));
+        var time = new ManualTimeProvider(
+            now ?? new DateTimeOffset(2026, 8, 8, 10, 0, 0, TimeSpan.Zero));
         var services = new ServiceCollection();
-        services.AddIdentityModule(connectionString, IdentityTestScope.CreateKeys(), time);
+        services.AddIdentityModule(connectionString, keyOptions ?? IdentityTestScope.CreateKeys(), time);
         services.AddTenancyModule(connectionString, time);
-        services.AddSingleton<IDataProtectionProvider>(IdentityTestScope.DataProtectionProvider);
+        services.AddSingleton(
+            dataProtectionProvider ?? IdentityTestScope.DataProtectionProvider);
+        services.AddSingleton<IDataProtectionKeyRingReadiness>(
+            new ConfiguredTestDataProtectionKeyRing(dataProtectionKeyRingReady));
         var root = services.BuildServiceProvider(validateScopes: true);
         var serviceScope = root.CreateScope();
         var scope = new ProvisioningTestScope(root, serviceScope, time);
-        await scope.Services.GetRequiredService<IdentityDbContext>().Database.MigrateAsync(
-            TestContext.Current.CancellationToken);
-        await scope.Services.GetRequiredService<TenancyDbContext>().Database.MigrateAsync(
-            TestContext.Current.CancellationToken);
+        if (migrate)
+        {
+            await scope.Services.GetRequiredService<IdentityDbContext>().Database.MigrateAsync(
+                TestContext.Current.CancellationToken);
+            await scope.Services.GetRequiredService<TenancyDbContext>().Database.MigrateAsync(
+                TestContext.Current.CancellationToken);
+        }
+
         return scope;
     }
 
@@ -258,12 +272,14 @@ internal sealed class ProvisioningTestScope : IAsyncDisposable
         Services.GetRequiredService<ITenancyProvisioningService>(),
         Services.GetRequiredService<ITenantAccessService>(),
         Services.GetRequiredService<IIdentityProvisioningService>(),
+        Services.GetRequiredService<IIdentityProvisioningReadinessService>(),
         terminal);
 
     internal ResetOwnerTotpOrchestrator CreateReset(IProvisioningTerminal terminal) => new(
         Services.GetRequiredService<ITenancyProvisioningService>(),
         Services.GetRequiredService<ITenantAccessService>(),
         Services.GetRequiredService<IIdentityProvisioningService>(),
+        Services.GetRequiredService<IIdentityProvisioningReadinessService>(),
         terminal);
 
     internal void RememberEnrollment(string totpUri, IReadOnlyList<string> recoveryCodes)
@@ -370,6 +386,12 @@ internal sealed class ProvisioningTestScope : IAsyncDisposable
         _serviceScope.Dispose();
         await _root.DisposeAsync();
     }
+}
+
+internal sealed class ConfiguredTestDataProtectionKeyRing(
+    bool ready) : IDataProtectionKeyRingReadiness
+{
+    public bool HasUsableCurrentKey() => ready;
 }
 
 internal sealed record ProvisioningState(

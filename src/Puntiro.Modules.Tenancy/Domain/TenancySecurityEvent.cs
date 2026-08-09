@@ -61,4 +61,22 @@ internal sealed class TenancySecurityEvent
             "provisioning_completed",
             occurredAtUtc);
     }
+
+    internal static TenancySecurityEvent OrganizationSuspended(
+        Guid id,
+        Guid organizationId,
+        Guid actorUserId,
+        string traceId,
+        DateTimeOffset occurredAtUtc)
+    {
+        return new TenancySecurityEvent(
+            id,
+            organizationId,
+            actorUserId,
+            traceId,
+            "organization.suspended",
+            "success",
+            "administrative_action",
+            occurredAtUtc);
+    }
 }

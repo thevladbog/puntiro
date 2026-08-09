@@ -8,6 +8,7 @@ public sealed class ResetOwnerTotpOrchestrator(
     ITenancyProvisioningService tenancy,
     ITenantAccessService access,
     IIdentityProvisioningService identity,
+    IIdentityProvisioningReadinessService readiness,
     IProvisioningTerminal terminal)
 {
     public async Task<ProvisioningExit> RunAsync(
@@ -17,6 +18,11 @@ public sealed class ResetOwnerTotpOrchestrator(
     {
         try
         {
+            if (!await readiness.IsReadyForTrustedProvisioningAsync(cancellationToken))
+            {
+                return ProvisioningExit.InfrastructureFailure;
+            }
+
             var organizationId = await tenancy.FindOrganizationIdForTrustedProvisioningAsync(
                 organizationSlug,
                 cancellationToken);
@@ -60,6 +66,16 @@ public sealed class ResetOwnerTotpOrchestrator(
                 using var firstCode = await terminal.ReadTotpAsync(cancellationToken);
                 try
                 {
+                    await using var lease = await tenancy
+                        .TryAcquireActiveOwnerMutationLeaseForTrustedProvisioningAsync(
+                            organizationId.Value,
+                            userId.Value,
+                            cancellationToken);
+                    if (lease is null)
+                    {
+                        return ProvisioningExit.InvalidCredentials;
+                    }
+
                     await firstCode.Use(code => identity.CompleteOwnerTotpResetAsync(
                         pending,
                         new string(code),

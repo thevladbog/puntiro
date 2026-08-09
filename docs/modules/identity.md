@@ -81,6 +81,8 @@ TOTP login copies the factor verification time to `second_factor_verified_at`. R
 
 `FindUserIdForTrustedProvisioningAsync` is a non-mutating normalized-email lookup for the non-public provisioning/recovery composition only. It returns only an optional opaque user ID and never authenticates, consumes a factor, changes a session, or appends an event. HTTP handlers must not expose it as an account-discovery response. Recovery authorization remains entirely inside `PrepareOwnerTotpResetAsync` and its atomic completion path.
 
+`IIdentityProvisioningReadinessService` is another trusted non-HTTP contract. It returns only a generic readiness result and performs no factor, session, recovery, or event mutation. Before private CLI interaction it checks current HMAC usability, retained versions required by unused recovery rows and every stored session verifier, a current Data Protection round trip, and unprotectability of every active-account TOTP payload. It never returns a key version, user identifier, protected payload, or credential detail.
+
 `IAdminAuthenticationService` verifies password plus exactly one TOTP/recovery factor and performs replay/one-time state transitions. It returns `VerifiedIdentity?`, so every invalid external credential shape and value has the same result. `StepUpTotpAsync` accepts only TOTP.
 
 `IAdminSessionService` creates, validates, revokes one, or revokes every user session. `AdminSessionPrincipal` receives its user and organization identifiers only from the durable verified row. Callers must not treat an organization ID from request input as authorization; the Cloud host must recheck Tenancy.

@@ -9,6 +9,7 @@ public sealed class BootstrapOwnerOrchestrator(
     ITenancyProvisioningService tenancy,
     ITenantAccessService access,
     IIdentityProvisioningService identity,
+    IIdentityProvisioningReadinessService readiness,
     IProvisioningTerminal terminal)
 {
     public async Task<ProvisioningExit> RunAsync(
@@ -19,6 +20,11 @@ public sealed class BootstrapOwnerOrchestrator(
     {
         try
         {
+            if (!await readiness.IsReadyForTrustedProvisioningAsync(cancellationToken))
+            {
+                return ProvisioningExit.InfrastructureFailure;
+            }
+
             var organization = await tenancy.GetOrCreateProvisioningAsync(
                 organizationName,
                 organizationSlug,
