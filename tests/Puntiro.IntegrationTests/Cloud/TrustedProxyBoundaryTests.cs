@@ -96,6 +96,32 @@ public sealed class TrustedProxyConfigurationTests(CloudWebApplicationFactory fa
         Assert.Equal("Puntiro Cloud security configuration is invalid.", error.Message);
     }
 
+    [Theory]
+    [InlineData("0.0.0.0/0")]
+    [InlineData("::/0")]
+    public void Unrestricted_proxy_network_fails_startup(string network)
+    {
+        using var production = factory.CreateProductionFactory(
+            proxy: new ProxyTestSettings(IPAddress.Loopback, [], [network]));
+
+        var error = Assert.Throws<InvalidOperationException>(() => production.CreateSecureClient());
+
+        Assert.Equal("Puntiro Cloud security configuration is invalid.", error.Message);
+    }
+
+    [Theory]
+    [InlineData("0.0.0.0")]
+    [InlineData("::")]
+    public void Unspecified_proxy_address_fails_startup(string address)
+    {
+        using var production = factory.CreateProductionFactory(
+            proxy: new ProxyTestSettings(IPAddress.Loopback, [address], []));
+
+        var error = Assert.Throws<InvalidOperationException>(() => production.CreateSecureClient());
+
+        Assert.Equal("Puntiro Cloud security configuration is invalid.", error.Message);
+    }
+
     [Fact]
     public void Network_only_allowlist_starts_with_the_explicit_trusted_boundary()
     {

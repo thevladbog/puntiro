@@ -470,6 +470,12 @@ async function validateProxyBoundary(root, errors) {
   if (!valid) {
     errors.push('Cloud forwarded headers must use an explicit trusted proxy/network allowlist and ForwardLimit=1');
   }
+  const rejectsUnrestricted = /IPAddress\.Any/.test(content) &&
+    /IPAddress\.IPv6Any/.test(content) &&
+    /PrefixLength\s*>\s*0/.test(content);
+  if (!rejectsUnrestricted) {
+    errors.push('Cloud forwarded headers must reject unrestricted or unspecified proxy boundaries');
+  }
   if (!/ASPNETCORE_FORWARDEDHEADERS_ENABLED/.test(content)) {
     errors.push('Cloud must reject ASPNETCORE_FORWARDEDHEADERS_ENABLED because it clears the trust boundary');
   }

@@ -61,6 +61,9 @@ node scripts/cloud-compose.mjs --mode normal --compose-env infra/compose/.env.cl
     options.KnownIPNetworks.Add(network);
     options.ForwardLimit = 1;
     options.RequireHeaderSymmetry = true;
+    IPAddress.TryParse(value, out var address) &&
+      !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any);
+    IPNetwork.TryParse(value, out var network) && network.PrefixLength > 0;
   `,
   'infra/compose/cloud-development.yml': `services:
   postgres:
@@ -553,10 +556,27 @@ test('rejects an enabled forwarded-header boundary without an explicit trust all
       options.KnownIPNetworks.Clear();
       options.KnownProxies.Clear();
       options.ForwardLimit = null;
+      IPAddress.TryParse(value, out var address) &&
+        !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any);
+      IPNetwork.TryParse(value, out var network) && network.PrefixLength > 0;
     `,
   });
   assert.deepEqual(await validateCloudSecurity(fixture), [
     'Cloud forwarded headers must use an explicit trusted proxy/network allowlist and ForwardLimit=1',
+  ]);
+});
+
+test('requires unrestricted and unspecified proxy boundaries to fail closed', async t => {
+  const fixture = await createCloudFixture(t, {
+    'apps/cloud/Configuration/CloudServiceCollectionExtensions.cs': validFiles[
+      'apps/cloud/Configuration/CloudServiceCollectionExtensions.cs'
+    ]
+      .replace('      !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any);\n', '')
+      .replace(' && network.PrefixLength > 0', ''),
+  });
+
+  assert.deepEqual(await validateCloudSecurity(fixture), [
+    'Cloud forwarded headers must reject unrestricted or unspecified proxy boundaries',
   ]);
 });
 

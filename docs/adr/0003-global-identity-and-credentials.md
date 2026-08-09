@@ -19,6 +19,8 @@ Puntiro needs one administrative identity that may belong to an organization wit
 
 ## Consequences
 
+Forwarded client addresses are accepted only through one symmetric hop from an explicit immediate-proxy address or bounded CIDR. The unspecified addresses `0.0.0.0` and `::`, the unrestricted networks `0.0.0.0/0` and `::/0`, an empty allowlist, and the ASP.NET Core platform forwarding shortcut all fail Cloud startup closed. This prevents an unrestricted network from turning attacker-controlled `X-Forwarded-For` values into rate-limit partitions.
+
 - Email uniqueness is global while organization authorization remains membership-scoped.
 - Credential reset can revoke every server session without changing Tenancy data.
 - Two active integration tokens permit deliberate manual replacement without an automatic refresh flow.

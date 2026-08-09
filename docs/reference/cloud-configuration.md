@@ -33,8 +33,8 @@ Compose loads `cloud-runtime.env` without enumerating HMAC versions or proxy ind
 | --- | --- | --- | --- |
 | `Puntiro__Admin__AllowedOrigin` | Absolute HTTPS origin ending `/`, no query/fragment | Non-secret | Exact origin accepted for Admin login and unsafe Admin requests. |
 | `Puntiro__Proxy__Enabled` | `true` or `false` | Non-secret | Disabled requires zero allowlist values. Enable only behind the reviewed trusted proxy boundary. |
-| `Puntiro__Proxy__KnownProxies__<index>` | Literal IPv4 or IPv6 address | Operational | Optional immediate trusted proxy addresses, densely indexed from zero. |
-| `Puntiro__Proxy__KnownNetworks__<index>` | IPv4/IPv6 CIDR | Operational | Optional immediate trusted proxy networks, densely indexed from zero. Enabled mode needs at least one actual proxy/network. |
+| `Puntiro__Proxy__KnownProxies__<index>` | Literal IPv4 or IPv6 address | Operational | Optional immediate trusted proxy addresses, densely indexed from zero. Unspecified `0.0.0.0` and `::` are rejected. |
+| `Puntiro__Proxy__KnownNetworks__<index>` | IPv4/IPv6 CIDR | Operational | Optional immediate trusted proxy networks, densely indexed from zero. Enabled mode needs at least one actual proxy/network; unrestricted `0.0.0.0/0` and `::/0` are rejected. |
 | `Puntiro__Security__DataProtectionKeysPath` | Absolute existing mode-`0700` host directory | Operational | One persistent ring used by host provisioning and bind-mounted into Cloud. Before startup it must contain at least one private regular `key-<uuid>.xml` with the expected protected ASP.NET Data Protection key structure. |
 | `Puntiro__Security__DataProtectionCertificatePath` | Absolute existing mode-`0600` host PKCS#12 path | Operational | Host-tool path containing nonempty PKCS#12 material. Compose overrides it with the read-only in-container mount path. |
 | `Puntiro__Security__DataProtectionCertificatePassword` | PKCS#12 password | Secret | Store separately from certificate backup. |

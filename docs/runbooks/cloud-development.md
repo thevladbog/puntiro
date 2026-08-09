@@ -108,7 +108,7 @@ curl --fail --silent --show-error "$PUNTIRO_CLOUD_HEALTH_ORIGIN/health/ready" >/
 
 The committed origin is intentionally unusable. Replace it only in the private operator shell. A liveness success never compensates for a readiness failure.
 
-Before enabling forwarded headers, obtain the exact immediate Timeweb reverse-proxy IP addresses or CIDR networks. Set `Puntiro__Proxy__Enabled=true` and add only the applicable indexed `KnownProxies` and/or `KnownNetworks` assignments to `cloud-runtime.env`. Do not add empty indexed values. Disabled mode has zero allowlist values; enabled mode requires at least one actual proxy or network.
+Before enabling forwarded headers, obtain the exact immediate Timeweb reverse-proxy IP addresses or CIDR networks. Set `Puntiro__Proxy__Enabled=true` and add only the applicable indexed `KnownProxies` and/or `KnownNetworks` assignments to `cloud-runtime.env`. Do not add empty indexed values. Never use unspecified proxy addresses (`0.0.0.0`, `::`) or unrestricted CIDRs (`0.0.0.0/0`, `::/0`): Cloud rejects them at startup because either value would destroy the client-address trust boundary used by rate limiting. Disabled mode has zero allowlist values; enabled mode requires at least one actual proxy or network.
 
 Puntiro accepts one symmetric `X-Forwarded-For`/`X-Forwarded-Proto` hop. Forwarded headers from a direct peer outside the configured trust boundary are ignored. Do not set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`. Restrict direct listener access to expected proxies and the reviewed operator path, then revalidate after every Timeweb topology change. Automated tests cover trusted/unknown peers; deployed Timeweb verification remains `not run` until recorded there.
 

@@ -284,11 +284,18 @@ public static class CloudServiceCollectionExtensions
             return false;
         }
 
-        return proxy.KnownProxies.All(static value =>
-                   IPAddress.TryParse(value, out _)) &&
-            proxy.KnownNetworks.All(static value =>
-                System.Net.IPNetwork.TryParse(value, out _));
+        return proxy.KnownProxies.All(ValidProxyAddress) &&
+            proxy.KnownNetworks.All(ValidProxyNetwork);
     }
+
+    private static bool ValidProxyAddress(string value) =>
+        IPAddress.TryParse(value, out var address) &&
+        !address.Equals(IPAddress.Any) &&
+        !address.Equals(IPAddress.IPv6Any);
+
+    private static bool ValidProxyNetwork(string value) =>
+        System.Net.IPNetwork.TryParse(value, out var network) &&
+        network.PrefixLength > 0;
 
     private static void EnsureIndependentKeys(params IReadOnlyDictionary<string, byte[]>[] sets)
     {
