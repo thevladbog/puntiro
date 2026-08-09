@@ -139,7 +139,13 @@ async function main() {
   }
 
   required(runtime, 'Puntiro__Admin__AllowedOrigin');
-  await validateCloudRuntimeMaterial({ compose, composeEnvPath, runtime, runtimeEnvPath });
+  await validateCloudRuntimeMaterial({
+    compose,
+    composeEnvPath,
+    mode: 'restore',
+    runtime,
+    runtimeEnvPath,
+  });
   required(runtime, 'Puntiro__Security__DataProtectionCertificatePassword');
   validateIndependentHmacKeys(
     validateHmac(runtime, 'Session'),

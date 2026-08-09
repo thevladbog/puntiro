@@ -22,7 +22,7 @@ services:
   cloud:
     profiles: ["cloud-runtime"]
     image: ${PUNTIRO_CLOUD_IMAGE:-puntiro-cloud:local}
-    user: "${PUNTIRO_CLOUD_UID:-10001}:${PUNTIRO_CLOUD_GID:-10001}"
+    user: "${PUNTIRO_CLOUD_UID:?set PUNTIRO_CLOUD_UID in infra/compose/.env.cloud}:${PUNTIRO_CLOUD_GID:?set PUNTIRO_CLOUD_GID in infra/compose/.env.cloud}"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -34,7 +34,7 @@ services:
     tmpfs:
       - /tmp:mode=1777
     env_file:
-      - path: ${PUNTIRO_CLOUD_RUNTIME_ENV_FILE:-./cloud-runtime.env}
+      - path: ${PUNTIRO_CLOUD_RUNTIME_ENV_FILE:?set PUNTIRO_CLOUD_RUNTIME_ENV_FILE in infra/compose/.env.cloud}
         required: true
         format: raw
     environment:
@@ -44,12 +44,12 @@ services:
       Puntiro__Security__DataProtectionCertificatePath: /run/puntiro-secrets/data-protection.pfx
     volumes:
       - type: bind
-        source: ${Puntiro__Security__DataProtectionKeysPath:-./cloud-data-protection-keys}
+        source: ${Puntiro__Security__DataProtectionKeysPath:?set Puntiro__Security__DataProtectionKeysPath in cloud-runtime.env}
         target: /var/lib/puntiro/data-protection-keys
         bind:
           create_host_path: false
       - type: bind
-        source: ${Puntiro__Security__DataProtectionCertificateHostPath:-./cloud-secrets/data-protection.pfx}
+        source: ${Puntiro__Security__DataProtectionCertificateHostPath:?set Puntiro__Security__DataProtectionCertificateHostPath in infra/compose/.env.cloud}
         target: /run/puntiro-secrets/data-protection.pfx
         read_only: true
         bind:

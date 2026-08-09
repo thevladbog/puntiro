@@ -14,6 +14,7 @@ async function restoreFixture(t, database = 'puntiro_restore_drill') {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const composeEnv = path.join(directory, 'compose.restore.env');
   const runtimeEnv = path.join(directory, 'runtime.restore.env');
+  const bin = path.join(directory, 'bin');
   const certificate = path.join(directory, 'certificate.pfx');
   const keyRing = path.join(directory, 'data-protection-keys');
   const keyId = '11111111-2222-3333-4444-555555555555';
@@ -24,12 +25,13 @@ async function restoreFixture(t, database = 'puntiro_restore_drill') {
     integration: Buffer.alloc(32, 0x53).toString('base64'),
   };
   await mkdir(keyRing, { mode: 0o700 });
+  await mkdir(bin);
   await writeFile(keyFile, `<?xml version="1.0" encoding="utf-8"?>
 <key id="${keyId}" version="1">
   <creationDate>2026-08-09T00:00:00.0000000Z</creationDate>
   <activationDate>2026-08-09T00:00:00.0000000Z</activationDate>
   <expirationDate>2026-11-07T00:00:00.0000000Z</expirationDate>
-  <descriptor deserializerType="fixture"><encryptedSecret decryptorType="fixture" /></descriptor>
+  <descriptor deserializerType="fixture"><encryptedSecret decryptorType="fixture"><value>fixture</value></encryptedSecret></descriptor>
 </key>
 `, { mode: 0o600 });
   await writeFile(certificate, Buffer.from([0x30, 0x82, 0x00, 0x01, 0x00]), { mode: 0o600 });
@@ -66,16 +68,23 @@ async function restoreFixture(t, database = 'puntiro_restore_drill') {
   ].join('\n'));
   await chmod(composeEnv, 0o600);
   await chmod(runtimeEnv, 0o600);
-  return { certificate, composeEnv, keyFile, keyRing, runtimeEnv };
+  await writeFile(path.join(bin, 'dotnet'), '#!/usr/bin/env node\nprocess.exit(0);\n');
+  await chmod(path.join(bin, 'dotnet'), 0o755);
+  return { bin, certificate, composeEnv, keyFile, keyRing, runtimeEnv };
 }
 
-function runValidator({ composeEnv, runtimeEnv }) {
+function runValidator(fixture) {
+  const { composeEnv, runtimeEnv } = fixture;
   return spawnSync(process.execPath, [
     validator,
     '--compose-env', composeEnv,
     '--runtime-env', runtimeEnv,
     '--restore-project', 'puntiro-restore-drill',
-  ], { cwd: root, encoding: 'utf8' });
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${fixture.bin}${path.delimiter}${process.env.PATH}` },
+  });
 }
 
 test('accepts a restore-only project whose runtime connection targets its restored database', async t => {
@@ -163,7 +172,10 @@ test('rejects a structurally plausible but unprotected Data Protection key', asy
   const contents = await readFile(fixture.keyFile, 'utf8');
   await writeFile(
     fixture.keyFile,
-    contents.replace('<encryptedSecret decryptorType="fixture" />', '<descriptor />'),
+    contents.replace(
+      '<encryptedSecret decryptorType="fixture"><value>fixture</value></encryptedSecret>',
+      '<descriptor />',
+    ),
     { mode: 0o600 },
   );
 

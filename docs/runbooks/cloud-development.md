@@ -12,7 +12,7 @@ cp infra/compose/cloud-runtime.env.example infra/compose/cloud-runtime.env
 chmod 600 infra/compose/.env.cloud infra/compose/cloud-runtime.env
 ```
 
-`infra/compose/.env.cloud` is the Compose/host-tool overlay. `infra/compose/cloud-runtime.env` is the raw Cloud runtime file. They are ordinary dotenv files for `docker compose --env-file`; they are not shell programs and must never be sourced. Values use exact `NAME=VALUE` assignments. Duplicate names inside a file, `export`, quotes, inline comments, dollar command/parameter substitutions, backticks, tabs/control characters and leading/trailing value whitespace are rejected. Full-line comments and blanks are allowed. Semicolons, internal spaces and base64 padding are preserved literally by Compose and by `scripts/run-with-cloud-env.mjs` with `shell: false`. Passing `.env.cloud` last intentionally overrides the container connection only for host tools.
+`infra/compose/.env.cloud` is the Compose/host-tool overlay. `infra/compose/cloud-runtime.env` is the raw Cloud runtime file. They are ordinary dotenv files for Compose; they are not shell programs and must never be sourced. Values use exact `NAME=VALUE` assignments. Duplicate names inside a file, `export`, quotes, inline comments, every dollar sign, backticks, tabs/control characters and leading/trailing value whitespace are rejected. Full-line comments and blanks are allowed. Semicolons, internal spaces and base64 padding are preserved literally by the checked wrapper and by `scripts/run-with-cloud-env.mjs` with `shell: false`. Passing `.env.cloud` last intentionally overrides the container connection only for host tools.
 
 The runtime file contains every retained HMAC version, not only `CurrentVersion`. Generate independent canonical base64 encodings of exactly 32 random bytes for session, recovery, and integration purposes. Never reuse key bytes across purposes. Keep populated files ignored, untracked, mode `0600`, and in approved secret custody; never print them or paste them into CI, tickets, or shell history.
 
@@ -34,7 +34,7 @@ chmod 600 infra/compose/cloud-secrets/*
 
 The PKCS#12 command prompts privately. Put its password only in the runtime file. Set `Puntiro__Security__DataProtectionKeysPath` and `Puntiro__Security__DataProtectionCertificatePath` there to the absolute host paths. Set `Puntiro__Security__DataProtectionCertificateHostPath` in `.env.cloud` to that same certificate path. Set `PUNTIRO_CLOUD_UID` and `PUNTIRO_CLOUD_GID` to the non-zero numeric owner of the ring, every ring key file and certificate; Compose forces the container to that same identity. For local development these normally equal the account that runs provisioning. For Timeweb use the reviewed dedicated service identity and change ownership explicitly before preflight. The Cloud container receives `/var/lib/puntiro/data-protection-keys` and `/run/puntiro-secrets/data-protection.pfx` through explicit Compose overrides.
 
-On Timeweb, place the ring and certificate on documented persistent host storage outside the checkout, image layers, and replaceable release directories (for example, dedicated `/srv/puntiro/state` and `/srv/puntiro/secrets` mounts selected by the operator). The configured service UID/GID owns the ring directory at exact mode `0700`, every key at `0600`, and the certificate regular file at `0600`; this supplies owner read/write for the ring and owner read for the certificate. Configure those absolute host paths before container creation, verify the resolved bind sources with `docker compose config`, and include the host ring in the independent encrypted backup/restore process. Compose uses `create_host_path: false`; missing sources fail instead of becoming empty directories/files. A container filesystem or unnamed/ephemeral mount is not acceptable custody. The exact Timeweb volume, ownership, backup retention, and restore behavior remain `not run` until recorded on the deployed topology.
+On Timeweb, place the ring and certificate on documented persistent host storage outside the checkout, image layers, and replaceable release directories (for example, dedicated `/srv/puntiro/state` and `/srv/puntiro/secrets` mounts selected by the operator). The configured service UID/GID owns the ring directory at exact mode `0700`, every key at `0600`, and the certificate regular file at `0600`; this supplies owner read/write for the ring and owner read for the certificate. Configure those absolute host paths before container creation and use the checked wrapper to validate the resolved bind sources before it immediately performs the requested operation. Include the host ring in the independent encrypted backup/restore process. Compose uses `create_host_path: false`; missing sources fail instead of becoming empty directories/files. A container filesystem or unnamed/ephemeral mount is not acceptable custody. The exact Timeweb volume, ownership, backup retention, and restore behavior remain `not run` until recorded on the deployed topology.
 
 ## Start PostgreSQL and apply migrations
 
@@ -84,22 +84,14 @@ node scripts/run-with-cloud-env.mjs \
 
 Follow [First owner provisioning](first-owner-provisioning.md). Do not redirect or record one-time output.
 
-Before any normal Cloud `create`, `up` or `start`, reconcile the ring/key/certificate owner with the numeric `PUNTIRO_CLOUD_UID`/`PUNTIRO_CLOUD_GID`, then run the executable preflight. It checks both env files without echoing values, requires the runtime file at exact mode `0600`, verifies the nonempty protected key format, exact private modes and service ownership, and verifies nonempty PKCS#12 material:
+Before any normal Cloud `create`, `up` or `start`, reconcile the ring/key/certificate owner with the numeric `PUNTIRO_CLOUD_UID`/`PUNTIRO_CLOUD_GID`, then use the checked wrapper. It strips ambient Cloud/PostgreSQL/Compose interpolation variables, checks both env files without echoing values, requires the runtime file at exact mode `0600`, validates exact private modes and ownership, uses the actual Npgsql parser, cryptographically loads the certificate/password, and exercises the real ASP.NET Data Protection stack against the protected ring. It then resolves Compose, verifies the resolved image, identity, environment, loopback database port and bind sources against those exact validated files, and immediately performs the requested operation:
 
 ```bash
-node scripts/preflight-cloud-runtime.mjs \
+node scripts/cloud-compose.mjs \
+  --mode normal \
   --compose-env infra/compose/.env.cloud \
-  --runtime-env infra/compose/cloud-runtime.env
-```
-
-Only after preflight succeeds may the opt-in profile start an already reviewed Cloud image:
-
-```bash
-docker compose \
-  --env-file infra/compose/.env.cloud \
-  --env-file infra/compose/cloud-runtime.env \
-  -f infra/compose/cloud-development.yml \
-  --profile cloud-runtime up -d cloud
+  --runtime-env infra/compose/cloud-runtime.env \
+  --operation up-cloud
 ```
 
 The runtime env is mandatory for this profile. The Cloud service is read-only, uses the configured non-root UID/GID, drops capabilities, uses `no-new-privileges`, refuses Docker-created bind sources, mounts the certificate read-only, and receives arbitrary retained HMAC versions from the ignored raw runtime env file. This repository does not claim that a Timeweb image has been built or deployed.
@@ -173,22 +165,20 @@ chmod 600 infra/compose/cloud-secrets/data-protection.restore.pfx
 
 Populate `.env.cloud.restore` with the exact project marker, `POSTGRES_DB=puntiro_restore_drill`, the isolated username/password, a distinct non-`5432` loopback port such as `55440`, an absolute `PUNTIRO_CLOUD_RUNTIME_ENV_FILE`, the service `PUNTIRO_CLOUD_UID`/`PUNTIRO_CLOUD_GID`, and the restore certificate host path. Both host-only `ConnectionStrings__Puntiro` and `PUNTIRO_TEST_POSTGRES` must use `Host=127.0.0.1`, that exact distinct port, `Database=puntiro_restore_drill`, and the same username/password as `POSTGRES_USER`/`POSTGRES_PASSWORD`. Populate `cloud-runtime.restore.env` with `Host=postgres;Port=5432;Database=puntiro_restore_drill;...` and those same credentials, the absolute restore ring/certificate paths, the certificate password, and every retained HMAC version from custody. Make the configured service UID/GID the exact owner of the restore ring, each `key-<uuid>.xml`, and certificate. Do not reuse the normal database, credentials, loopback port or normal ring.
 
-Validate all three connection targets/credentials, private file modes, service ownership, nonempty protected Data Protection key structure, nonempty certificate, current keys, and every retained HMAC key before the first restore service exists:
+Use the same checked wrapper for the first restore service. It validates all three connection targets/credentials with the actual Npgsql parser, rejects duplicate aliases and unsupported multi-host/routing properties, validates private file modes and service ownership, cryptographically loads the certificate/password, and performs a real Data Protection protect/unprotect roundtrip using the restored ring before it resolves Compose and immediately starts isolated PostgreSQL:
 
 ```bash
-node scripts/validate-cloud-runtime-env.mjs \
+node scripts/cloud-compose.mjs \
+  --mode restore \
   --compose-env infra/compose/.env.cloud.restore \
   --runtime-env infra/compose/cloud-runtime.restore.env \
-  --restore-project "$PUNTIRO_RESTORE_PROJECT"
+  --restore-project "$PUNTIRO_RESTORE_PROJECT" \
+  --operation up-postgres
 ```
 
-Only after that command succeeds may the isolated PostgreSQL service be created and started:
+Only after the wrapper succeeds may the dump be restored:
 
 ```bash
-docker compose -p "$PUNTIRO_RESTORE_PROJECT" \
-  --env-file infra/compose/.env.cloud.restore \
-  --env-file infra/compose/cloud-runtime.restore.env \
-  -f infra/compose/cloud-development.yml up -d postgres
 docker compose -p "$PUNTIRO_RESTORE_PROJECT" \
   --env-file infra/compose/.env.cloud.restore \
   --env-file infra/compose/cloud-runtime.restore.env \
@@ -212,14 +202,18 @@ node scripts/run-with-cloud-env.mjs \
   --env-file infra/compose/cloud-runtime.restore.env \
   --env-file infra/compose/.env.cloud.restore \
   -- dotnet ef database update --project src/Puntiro.Modules.Integrations --startup-project apps/cloud --context IntegrationsDbContext
-docker compose -p "$PUNTIRO_RESTORE_PROJECT" \
-  --env-file infra/compose/.env.cloud.restore \
-  --env-file infra/compose/cloud-runtime.restore.env \
-  -f infra/compose/cloud-development.yml --profile cloud-runtime create cloud
-docker compose -p "$PUNTIRO_RESTORE_PROJECT" \
-  --env-file infra/compose/.env.cloud.restore \
-  --env-file infra/compose/cloud-runtime.restore.env \
-  -f infra/compose/cloud-development.yml --profile cloud-runtime start cloud
+node scripts/cloud-compose.mjs \
+  --mode restore \
+  --compose-env infra/compose/.env.cloud.restore \
+  --runtime-env infra/compose/cloud-runtime.restore.env \
+  --restore-project "$PUNTIRO_RESTORE_PROJECT" \
+  --operation create-cloud
+node scripts/cloud-compose.mjs \
+  --mode restore \
+  --compose-env infra/compose/.env.cloud.restore \
+  --runtime-env infra/compose/cloud-runtime.restore.env \
+  --restore-project "$PUNTIRO_RESTORE_PROJECT" \
+  --operation start-cloud
 ```
 
 Require both health probes and bounded authentication/readiness acceptance without request/response bodies. Do not point this procedure at production, reuse a production project name, or call the drill successful until PostgreSQL, ring, certificate, and every retained HMAC version have been exercised. Cleanup is an explicit operator action after evidence retention and is omitted to avoid accidental volume deletion.

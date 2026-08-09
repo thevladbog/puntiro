@@ -25,6 +25,7 @@ public static class ProvisioningArguments
             ["reset-owner-totp"] = new HashSet<string>(
                 ["organization-slug", "email"],
                 StringComparer.Ordinal),
+            ["cloud-preflight"] = new HashSet<string>(["mode"], StringComparer.Ordinal),
         };
 
     private static readonly ProvisioningParseResult Invalid = new(

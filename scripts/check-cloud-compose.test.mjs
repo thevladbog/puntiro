@@ -18,6 +18,11 @@ test('database-only configuration needs no Cloud runtime env file and keeps Clou
     'POSTGRES_USER=puntiro_compose_fixture',
     'POSTGRES_PASSWORD=fixture-only',
     'PUNTIRO_POSTGRES_PORT=55439',
+    `PUNTIRO_CLOUD_UID=${process.getuid()}`,
+    `PUNTIRO_CLOUD_GID=${process.getgid()}`,
+    `PUNTIRO_CLOUD_RUNTIME_ENV_FILE=${path.join(directory, 'absent-runtime.env')}`,
+    `Puntiro__Security__DataProtectionKeysPath=${path.join(directory, 'absent-ring')}`,
+    `Puntiro__Security__DataProtectionCertificateHostPath=${path.join(directory, 'absent-certificate.pfx')}`,
     '',
   ].join('\n'));
 
@@ -204,6 +209,8 @@ test('Cloud profile requires the runtime env file instead of silently starting w
     'POSTGRES_USER=puntiro_compose_fixture',
     'POSTGRES_PASSWORD=fixture-only',
     'PUNTIRO_POSTGRES_PORT=55439',
+    `PUNTIRO_CLOUD_UID=${process.getuid()}`,
+    `PUNTIRO_CLOUD_GID=${process.getgid()}`,
     `PUNTIRO_CLOUD_RUNTIME_ENV_FILE=${missingRuntime}`,
     `Puntiro__Security__DataProtectionKeysPath=${path.join(directory, 'missing-ring')}`,
     `Puntiro__Security__DataProtectionCertificateHostPath=${path.join(directory, 'missing-certificate.pfx')}`,

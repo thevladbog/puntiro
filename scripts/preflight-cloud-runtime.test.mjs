@@ -14,28 +14,40 @@ async function runtimeFixture(t) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const composeEnv = path.join(directory, 'compose.env');
   const runtimeEnv = path.join(directory, 'runtime.env');
+  const bin = path.join(directory, 'bin');
   const ring = path.join(directory, 'ring');
   const certificate = path.join(directory, 'certificate.pfx');
   const keyId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
   const keyFile = path.join(ring, `key-${keyId}.xml`);
   await mkdir(ring, { mode: 0o700 });
-  await writeFile(keyFile, `<?xml version="1.0"?><key id="${keyId}" version="1"><creationDate>2026-08-09T00:00:00Z</creationDate><activationDate>2026-08-09T00:00:00Z</activationDate><expirationDate>2026-11-09T00:00:00Z</expirationDate><descriptor deserializerType="fixture"><encryptedSecret decryptorType="fixture" /></descriptor></key>`, { mode: 0o600 });
+  await mkdir(bin);
+  await writeFile(keyFile, `<?xml version="1.0"?><key id="${keyId}" version="1"><creationDate>2026-08-09T00:00:00Z</creationDate><activationDate>2026-08-09T00:00:00Z</activationDate><expirationDate>2026-11-09T00:00:00Z</expirationDate><descriptor deserializerType="fixture"><encryptedSecret decryptorType="fixture"><value>fixture</value></encryptedSecret></descriptor></key>`, { mode: 0o600 });
   await writeFile(certificate, Buffer.from([0x30, 0x82, 0x00, 0x01, 0x00]), { mode: 0o600 });
   await writeFile(composeEnv, [
     `PUNTIRO_CLOUD_RUNTIME_ENV_FILE=${runtimeEnv}`,
+    'PUNTIRO_POSTGRES_PORT=55440',
+    'POSTGRES_DB=puntiro_fixture',
+    'POSTGRES_USER=puntiro_fixture',
+    'POSTGRES_PASSWORD=fixture-only',
     `PUNTIRO_CLOUD_UID=${process.getuid()}`,
     `PUNTIRO_CLOUD_GID=${process.getgid()}`,
     `Puntiro__Security__DataProtectionCertificateHostPath=${certificate}`,
+    'ConnectionStrings__Puntiro=Host=127.0.0.1;Port=55440;Database=puntiro_fixture;Username=puntiro_fixture;Password=fixture-only',
+    'PUNTIRO_TEST_POSTGRES=Host=127.0.0.1;Port=55440;Database=puntiro_fixture;Username=puntiro_fixture;Password=fixture-only',
     '',
   ].join('\n'));
   await writeFile(runtimeEnv, [
     `Puntiro__Security__DataProtectionKeysPath=${ring}`,
     `Puntiro__Security__DataProtectionCertificatePath=${certificate}`,
+    'ConnectionStrings__Puntiro=Host=postgres;Port=5432;Database=puntiro_fixture;Username=puntiro_fixture;Password=fixture-only',
+    'Puntiro__Security__DataProtectionCertificatePassword=fixture-only',
     '',
   ].join('\n'));
   await chmod(composeEnv, 0o600);
   await chmod(runtimeEnv, 0o600);
-  return { certificate, composeEnv, keyFile, ring, runtimeEnv };
+  await writeFile(path.join(bin, 'dotnet'), '#!/usr/bin/env node\nprocess.exit(0);\n');
+  await chmod(path.join(bin, 'dotnet'), 0o755);
+  return { bin, certificate, composeEnv, keyFile, ring, runtimeEnv };
 }
 
 function runPreflight(fixture) {
@@ -43,7 +55,11 @@ function runPreflight(fixture) {
     preflight,
     '--compose-env', fixture.composeEnv,
     '--runtime-env', fixture.runtimeEnv,
-  ], { cwd: root, encoding: 'utf8' });
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${fixture.bin}${path.delimiter}${process.env.PATH}` },
+  });
 }
 
 test('accepts a private nonempty runtime environment owned for the configured service identity', async t => {

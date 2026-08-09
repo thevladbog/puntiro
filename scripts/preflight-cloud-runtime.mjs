@@ -29,7 +29,13 @@ export async function preflightCloudRuntime(argv) {
   const { composeEnvPath, runtimeEnvPath } = argumentsFrom(argv);
   const compose = await loadCloudEnvFiles([composeEnvPath]);
   const runtime = await loadCloudEnvFiles([runtimeEnvPath]);
-  await validateCloudRuntimeMaterial({ compose, composeEnvPath, runtime, runtimeEnvPath });
+  await validateCloudRuntimeMaterial({
+    compose,
+    composeEnvPath,
+    mode: 'normal',
+    runtime,
+    runtimeEnvPath,
+  });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

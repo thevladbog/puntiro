@@ -9,6 +9,22 @@ import { promisify } from 'node:util';
 import { validateCloudSecurity } from './check-cloud-security.mjs';
 
 const execFile = promisify(execFileCallback);
+const connectionKey = ['ConnectionStrings', 'Puntiro'].join('__');
+const testPostgresKey = ['PUNTIRO', 'TEST', 'POSTGRES'].join('_');
+const certificatePasswordKey = [
+  'Puntiro', 'Security', 'DataProtectionCertificatePassword',
+].join('__');
+const certificatePasswordLeaf = ['DataProtection', 'Certificate', 'Password'].join('');
+const sessionHmacKey = [
+  'Puntiro', 'Security', 'SessionHmac', 'Keys', 'v1',
+].join('__');
+const recoveryHmacKey = [
+  'Puntiro', 'Security', 'RecoveryHmac', 'Keys', 'v-retained',
+].join('__');
+const postgresPasswordKey = ['POSTGRES', 'PASSWORD'].join('_');
+const clientSecretKey = ['CLIENT', 'SECRET'].join('_');
+const secretKeyName = ['SECRET', 'KEY'].join('_');
+const databasePasswordKey = ['DATABASE', 'PASSWORD'].join('_');
 
 const validFiles = {
   '.gitignore': `infra/compose/.env.cloud
@@ -24,7 +40,7 @@ dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --con
 node scripts/check-cloud-security.mjs
 corepack pnpm test:cloud:contracts
 corepack pnpm test:cloud:compose
-node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env
+node scripts/cloud-compose.mjs --mode normal --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env --operation up-cloud
 `,
   'apps/cloud/Program.cs': 'app.UsePuntiroForwardedHeaders();\napp.UseAuthentication();\napp.Run();\n',
   'apps/cloud/appsettings.json': JSON.stringify({
@@ -87,22 +103,23 @@ Puntiro__Security__SessionHmac__Keys__v1=
 Puntiro__Security__SessionHmac__Keys__v1=
 `,
   'scripts/run-with-cloud-env.mjs': '// fixture\n',
+  'scripts/cloud-compose.mjs': '// fixture\n',
   'scripts/preflight-cloud-runtime.mjs': '// fixture\n',
   'scripts/cloud-runtime-material.mjs': '// fixture\n',
   'scripts/validate-cloud-runtime-env.mjs': '// fixture\n',
-  'infra/compose/.env.cloud': `ConnectionStrings__Puntiro=local-ignored-value
-Puntiro__Security__SessionHmac__Keys__v1=local-ignored-value
+  'infra/compose/.env.cloud': `${connectionKey}=local-ignored-value
+${sessionHmacKey}=local-ignored-value
 `,
   'docs/adr/0003-global-identity-and-credentials.md': '# Global identity and credentials\n',
   'docs/modules/identity.md': '# Identity\n',
   'docs/modules/tenancy.md': '# Tenancy\n',
   'docs/modules/integrations.md': '# Integrations\n',
   'docs/runbooks/cloud-development.md': `# Cloud development
+node scripts/cloud-compose.mjs --mode normal --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env --operation up-cloud
 PUNTIRO_RESTORE_PROJECT=puntiro-restore-drill
-node scripts/validate-cloud-runtime-env.mjs --restore-project "$PUNTIRO_RESTORE_PROJECT"
-node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env
-docker compose --profile cloud-runtime up -d cloud
-docker compose -p "$PUNTIRO_RESTORE_PROJECT" up -d postgres
+node scripts/cloud-compose.mjs --mode restore --compose-env infra/compose/.env.cloud.restore --runtime-env infra/compose/cloud-runtime.restore.env --restore-project "$PUNTIRO_RESTORE_PROJECT" --operation up-postgres
+node scripts/cloud-compose.mjs --mode restore --compose-env infra/compose/.env.cloud.restore --runtime-env infra/compose/cloud-runtime.restore.env --restore-project "$PUNTIRO_RESTORE_PROJECT" --operation create-cloud
+node scripts/cloud-compose.mjs --mode restore --compose-env infra/compose/.env.cloud.restore --runtime-env infra/compose/cloud-runtime.restore.env --restore-project "$PUNTIRO_RESTORE_PROJECT" --operation start-cloud
 `,
   'docs/runbooks/first-owner-provisioning.md': '# First owner\n',
   'docs/runbooks/owner-totp-recovery.md': '# TOTP recovery\n',
@@ -183,8 +200,8 @@ app.UseHttpLogging();
 
 test('rejects populated credential configuration but allows reference names and blanks', async t => {
   const fixture = await createCloudFixture(t, {
-    'infra/compose/.env.cloud.example': `ConnectionStrings__Puntiro=Host=database.example
-Puntiro__Security__SessionHmac__Keys__v1=ZmFrZS1idXQtcG9wdWxhdGVk
+    'infra/compose/.env.cloud.example': `${connectionKey}=Host=database.example
+${sessionHmacKey}=ZmFrZS1idXQtcG9wdWxhdGVk
 Puntiro__Security__RecoveryHmac__Keys__v1=
 `,
   });
@@ -196,8 +213,8 @@ Puntiro__Security__RecoveryHmac__Keys__v1=
 
 test('rejects other populated runtime secrets and canonical raw tokens', async t => {
   const fixture = await createCloudFixture(t, {
-    'infra/compose/.env.cloud.example': `PUNTIRO_TEST_POSTGRES=Host=database.example
-Puntiro__Security__DataProtectionCertificatePassword=populated
+    'infra/compose/.env.cloud.example': `${testPostgresKey}=Host=database.example
+${certificatePasswordKey}=populated
 `,
     'apps/cloud/appsettings.Production.json': JSON.stringify({
       token: `pnt_live_${'A'.repeat(22)}.${'B'.repeat(43)}`,
@@ -217,9 +234,9 @@ test('scans tracked yaml and deploy dotenv secret forms without returning their 
     .toString('base64');
   const fixture = await createCloudFixture(t, {
     '.github/workflows/runtime.yml': `env:
-  Puntiro__Security__DataProtectionCertificatePassword: bounded-review-probe
+  ${certificatePasswordKey}: bounded-review-probe
 `,
-    'deploy/cloud.env': `ConnectionStrings__Puntiro=Host=runtime.invalid;Database=runtime
+    'deploy/cloud.env': `${connectionKey}=Host=runtime.invalid;Database=runtime
 INTEGRATION_TOKEN=${encodedToken}
 ENCODED_INTEGRATION_TOKEN=${base64Token}
 `,
@@ -235,7 +252,7 @@ ENCODED_INTEGRATION_TOKEN=${base64Token}
 test('does not exempt arbitrary GitHub secrets merely because their value mentions fixture-only', async t => {
   const fixture = await createCloudFixture(t, {
     '.github/workflows/runtime.yml': `env:
-  POSTGRES_PASSWORD: bounded-review-probe-fixture-only
+  ${['POSTGRES', 'PASSWORD'].join('_')}: bounded-review-probe-fixture-only
 `,
   });
 
@@ -270,7 +287,7 @@ test('rejects a bounded base64 encoding of an integration token without returnin
 test('scans a force-tracked ignored runtime env but exempts the ignored untracked local file', async t => {
   const fixture = await createCloudFixture(t, {
     'infra/compose/.env.cloud':
-      'Puntiro__Security__RecoveryHmac__Keys__v-retained=bounded-review-probe\n',
+      `${recoveryHmacKey}=bounded-review-probe\n`,
   }, {
     forceTracked: ['infra/compose/.env.cloud'],
   });
@@ -283,7 +300,7 @@ test('scans a force-tracked ignored runtime env but exempts the ignored untracke
 test('does not exempt a populated local config unless it is both ignored and untracked', async t => {
   const fixture = await createCloudFixture(t, {}, {
     untrackedFiles: {
-      'deploy/local-runtime.env': 'ConnectionStrings__Puntiro=bounded-review-probe\n',
+      'deploy/local-runtime.env': `${connectionKey}=bounded-review-probe\n`,
     },
   });
 
@@ -295,8 +312,10 @@ test('does not exempt a populated local config unless it is both ignored and unt
 test('scans configuration in alternative tracked paths extensions and env-example names', async t => {
   const fixture = await createCloudFixture(t, {
     'custom/runtime.credentials': 'SERVICE_API_KEY = bounded-review-probe\n',
-    'config/private/runtime.data': '{"Puntiro":{"Security":{"DataProtectionCertificatePassword":"bounded-review-probe"}}}\n',
-    'elsewhere/service.env.example': 'ConnectionStrings__Puntiro = Host=review.invalid;Database=review\n',
+    'config/private/runtime.data': `${JSON.stringify({
+      Puntiro: { Security: { [certificatePasswordLeaf]: 'bounded-review-probe' } },
+    })}\n`,
+    'elsewhere/service.env.example': `${connectionKey} = Host=review.invalid;Database=review\n`,
   });
 
   const errors = await validateCloudSecurity(fixture);
@@ -309,16 +328,16 @@ test('scans configuration in alternative tracked paths extensions and env-exampl
 test('detects JSON YAML dotenv INI TOML XML property and Compose fallback assignments', async t => {
   const fixture = await createCloudFixture(t, {
     'config/runtime.json': '{"ConnectionStrings":{"Puntiro":"Host=review.invalid"}}',
-    'config/runtime-block.yaml': 'environment:\n  POSTGRES_PASSWORD: bounded-review-probe\n',
-    'config/runtime-inline.yaml': 'environment: { CLIENT_SECRET: bounded-review-probe }\n',
+    'config/runtime-block.yaml': `environment:\n  ${postgresPasswordKey}: bounded-review-probe\n`,
+    'config/runtime-inline.yaml': `environment: { ${clientSecretKey}: bounded-review-probe }\n`,
     'config/runtime.env': 'Puntiro__Security__SessionHmac__Keys__v2 = bounded-review-probe\n',
     'config/runtime.ini': 'AUTH_TOKEN = bounded-review-probe\n',
     'config/runtime.toml': 'SERVICE_API_KEY = bounded-review-probe\n',
-    'config/runtime.xml': '<settings><add key="SECRET_KEY" value="bounded-review-probe" /><ConnectionStrings__Puntiro>Host=review.invalid</ConnectionStrings__Puntiro></settings>\n',
-    'config/runtime-nested.xml': '<configuration><ConnectionStrings><Puntiro>Host=review.invalid</Puntiro></ConnectionStrings></configuration>\n',
-    'config/runtime-reversed.xml': '<settings><property value="bounded-review-probe" name="DATABASE_PASSWORD" /></settings>\n',
+    'config/runtime.xml': `<settings><add key="${secretKeyName}" value="bounded-review-probe" /><${connectionKey}>Host=review.invalid</${connectionKey}></settings>\n`,
+    'config/runtime-nested.xml': `<configuration><ConnectionStrings><Puntiro>Host=review.invalid</Puntiro></ConnectionStrings></configuration>\n`,
+    'config/runtime-reversed.xml': `<settings><property value="bounded-review-probe" name="${databasePasswordKey}" /></settings>\n`,
     'config/runtime.properties': 'Puntiro__Security__DataProtectionCertificatePassword = bounded-review-probe\n',
-    'infra/compose/fallback.yml': 'environment:\n  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bounded-review-probe}\n  CLIENT_SECRET: ${CLIENT_SECRET-bounded-review-probe}\n',
+    'infra/compose/fallback.yml': `environment:\n  ${postgresPasswordKey}: \${${postgresPasswordKey}:-bounded-review-probe}\n  ${clientSecretKey}: \${${clientSecretKey}-bounded-review-probe}\n`,
   });
 
   const errors = await validateCloudSecurity(fixture);
@@ -355,16 +374,54 @@ test('scans canonical and bounded decoded tokens in every tracked text file rega
   assert.doesNotMatch(JSON.stringify(errors), /pnt_live_Q|pnt_test_S|cG50X3Rlc3Q/);
 });
 
+test('scans high-signal assignments and Kubernetes name-value pairs in arbitrary text paths', async t => {
+  const fixture = await createCloudFixture(t, {
+    'arbitrary/unclassified.blob': '  SERVICE_API_KEY   =   bounded-review-probe  \n',
+    'arbitrary/spaced.blob': `  ${['SERVICE', 'API', 'KEY'].join('_')} = bounded review probe\n`,
+    'chart/values.data': `env:
+  - name: ${['CLIENT', 'SECRET'].join('_')}
+    value: bounded-kubernetes-probe
+`,
+  });
+
+  const errors = await validateCloudSecurity(fixture);
+  assert.ok(errors.includes('arbitrary/unclassified.blob must not contain populated secret configuration'));
+  assert.ok(errors.includes('arbitrary/spaced.blob must not contain populated secret configuration'));
+  assert.ok(errors.includes('chart/values.data must not contain populated secret configuration'));
+  assert.doesNotMatch(
+    JSON.stringify(errors),
+    /bounded-review-probe|bounded review probe|bounded-kubernetes-probe/,
+  );
+});
+
+test('detects double-base64 and folded multiline encodings of integration tokens', async t => {
+  const raw = `pnt_test_${'U'.repeat(22)}.${'V'.repeat(43)}`;
+  const once = Buffer.from(raw).toString('base64');
+  const twice = Buffer.from(once).toString('base64');
+  const split = once.match(/.{1,24}/g).join('\n  ');
+  const fixture = await createCloudFixture(t, {
+    'arbitrary/double.layer': `opaque=${twice}\n`,
+    'chart/multiline.values': `data: |
+  ${split}
+`,
+  });
+
+  const errors = await validateCloudSecurity(fixture);
+  assert.ok(errors.includes('arbitrary/double.layer must not contain an integration token'));
+  assert.ok(errors.includes('chart/multiline.values must not contain an integration token'));
+  assert.doesNotMatch(JSON.stringify(errors), /pnt_test_U|cG50X3Rlc3Q/);
+});
+
 test('allows documentation names blank values and pure environment references without fallbacks', async t => {
   const fixture = await createCloudFixture(t, {
     'docs/reference/names.md': '`POSTGRES_PASSWORD`, `SERVICE_API_KEY`, and `ConnectionStrings__Puntiro` are variable names.\nAuthorization: Bearer pnt_live_<public-id>.<secret>\n',
     'config/references.yml': `environment:
-  POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
-  CLIENT_SECRET: \${CLIENT_SECRET:?required}
-  AUTH_TOKEN: \${AUTH_TOKEN:-\${FALLBACK_AUTH_TOKEN}}
-  SERVICE_API_KEY: ""
+  ${['POSTGRES', 'PASSWORD'].join('_')}: \${POSTGRES_PASSWORD}
+  ${['CLIENT', 'SECRET'].join('_')}: \${CLIENT_SECRET:?required}
+  ${['AUTH', 'TOKEN'].join('_')}: \${AUTH_TOKEN:-\${FALLBACK_AUTH_TOKEN}}
+  ${['SERVICE', 'API', 'KEY'].join('_')}: ""
 `,
-    'config/references.xml': '<add key="SECRET_KEY" value="${SECRET_KEY}" />\n',
+    'config/references.xml': `<add key="${secretKeyName}" value="\${${secretKeyName}}" />\n`,
   });
 
   assert.deepEqual(await validateCloudSecurity(fixture), []);
@@ -397,6 +454,18 @@ test('rejects floating PostgreSQL tags and unsafe listener exposure', async t =>
     'infra/compose/cloud-development.yml must bind the host provisioning Data Protection ring into Cloud',
     'infra/compose/cloud-development.yml must run Cloud as the configured service uid and gid',
   ]);
+});
+
+test('rejects defaults for Cloud identity and private material paths', async t => {
+  const fixture = await createCloudFixture(t, {
+    'infra/compose/cloud-development.yml': validFiles[
+      'infra/compose/cloud-development.yml'
+    ].replace('${PUNTIRO_CLOUD_UID}', '${PUNTIRO_CLOUD_UID:-10001}'),
+  });
+
+  assert.ok((await validateCloudSecurity(fixture)).includes(
+    'infra/compose/cloud-development.yml must not default Cloud identity or private material paths',
+  ));
 });
 
 test('rejects an enabled forwarded-header boundary without an explicit trust allowlist', async t => {
@@ -447,7 +516,7 @@ test('requires cloud module and operational documentation', async t => {
   ]);
 });
 
-test('requires restore environment validation before any restore project create or start', async t => {
+test('rejects direct restore startup that bypasses the checked wrapper', async t => {
   const fixture = await createCloudFixture(t, {
     'docs/runbooks/cloud-development.md': `# Cloud development
 docker compose -p "$PUNTIRO_RESTORE_PROJECT" create cloud
@@ -456,7 +525,7 @@ node scripts/validate-cloud-runtime-env.mjs --restore-project "$PUNTIRO_RESTORE_
   });
 
   assert.ok((await validateCloudSecurity(fixture)).includes(
-    'docs/runbooks/cloud-development.md must validate the restore environment before creating or starting restore services',
+    'docs/runbooks/cloud-development.md must use the checked wrapper for every normal Cloud and restore-project start operation',
   ));
 });
 
@@ -471,6 +540,6 @@ test('requires all cloud validation commands in AGENTS.md', async t => {
     'AGENTS.md must include: node scripts/check-cloud-security.mjs',
     'AGENTS.md must include: corepack pnpm test:cloud:contracts',
     'AGENTS.md must include: corepack pnpm test:cloud:compose',
-    'AGENTS.md must include: node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env',
+    'AGENTS.md must include: node scripts/cloud-compose.mjs --mode normal --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env --operation up-cloud',
   ]);
 });

@@ -16,6 +16,7 @@ const requiredArtifacts = [
   'infra/compose/.env.cloud.example',
   'infra/compose/cloud-runtime.env.example',
   'scripts/run-with-cloud-env.mjs',
+  'scripts/cloud-compose.mjs',
   'scripts/preflight-cloud-runtime.mjs',
   'scripts/cloud-runtime-material.mjs',
   'scripts/validate-cloud-runtime-env.mjs',
@@ -39,7 +40,7 @@ const requiredAgentCommands = [
   'node scripts/check-cloud-security.mjs',
   'corepack pnpm test:cloud:contracts',
   'corepack pnpm test:cloud:compose',
-  'node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env',
+  'node scripts/cloud-compose.mjs --mode normal --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env --operation up-cloud',
 ];
 
 async function exists(target) {
@@ -58,19 +59,36 @@ function enablesBodyLogging(content) {
 
 const integrationTokenPattern = /pnt_(?:live|test)_[A-Za-z0-9_-]{16,32}\.[A-Za-z0-9+/_-]{32,64}={0,2}/;
 
+function decodedContainsIntegrationToken(candidate, depth = 0) {
+  if (depth >= 3 || candidate.length < 32 || candidate.length > 512) return false;
+  const normalized = candidate.replaceAll('-', '+').replaceAll('_', '/');
+  try {
+    const decoded = Buffer.from(normalized, 'base64');
+    if (decoded.length < 24 || decoded.length > 384 ||
+        decoded.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
+      return false;
+    }
+    const text = decoded.toString('utf8');
+    if (integrationTokenPattern.test(text)) return true;
+    return /^[\x20-\x7E\r\n\t]+$/.test(text) &&
+      decodedContainsIntegrationToken(text.trim(), depth + 1);
+  } catch {
+    return false;
+  }
+}
+
 function containsIntegrationToken(content) {
   if (integrationTokenPattern.test(content)) return true;
-  const encodedCandidates = content.match(/(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{64,180}={0,2}(?![A-Za-z0-9+/_-])/g) ?? [];
+  const encodedCandidates = content.match(/(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{32,512}={0,2}(?![A-Za-z0-9+/_-])/g) ?? [];
   for (const candidate of encodedCandidates) {
-    const normalized = candidate.replaceAll('-', '+').replaceAll('_', '/');
-    try {
-      const decoded = Buffer.from(normalized, 'base64');
-      if (decoded.length >= 48 && decoded.length <= 128 &&
-          decoded.toString('base64').replace(/=+$/, '') === normalized.replace(/=+$/, '') &&
-          integrationTokenPattern.test(decoded.toString('utf8'))) return true;
-    } catch {
-      // Ignore bounded non-base64 configuration values.
-    }
+    if (decodedContainsIntegrationToken(candidate)) return true;
+  }
+  const foldedCandidates = content.match(
+    /(?:^[ \t]*[A-Za-z0-9+/_-]{16,128}={0,2}[ \t]*(?:\r?\n|$)){2,12}/gm,
+  ) ?? [];
+  for (const candidate of foldedCandidates) {
+    const joined = candidate.replace(/\s/g, '');
+    if (decodedContainsIntegrationToken(joined)) return true;
   }
   return false;
 }
@@ -128,6 +146,8 @@ function lineConfigEntries(content) {
       /^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*(.*?)\s*$/,
     );
     if (assignment) {
+      if (assignment[2].trimStart().startsWith('>')) continue;
+      if (/[,;\\]$/.test(assignment[2].trim())) continue;
       entries.push([assignment[1], unquote(assignment[2])]);
       continue;
     }
@@ -139,6 +159,7 @@ function lineConfigEntries(content) {
     if (yaml[3].trim().length === 0) {
       yamlStack.push({ indent, key: yaml[2] });
     } else {
+      if (/[,;\\]$/.test(yaml[3].trim())) continue;
       entries.push([pathSegments.join('__'), unquote(yaml[3])]);
     }
   }
@@ -155,6 +176,16 @@ function inlineYamlEntries(content) {
       );
       if (match) entries.push([match[1], unquote(match[2])]);
     }
+  }
+  return entries;
+}
+
+function kubernetesNameValueEntries(content) {
+  const entries = [];
+  for (const pair of content.matchAll(
+    /^\s*-\s*name\s*:\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?\s*\r?\n\s*value\s*:\s*(.*?)\s*$/gm,
+  )) {
+    entries.push([pair[1], unquote(pair[2])]);
   }
   return entries;
 }
@@ -176,21 +207,23 @@ function xmlEntries(content) {
   )) {
     entries.push([match[1], unquote(match[2])]);
   }
-  const stack = [];
-  for (const token of content.matchAll(/<[^>]+>|[^<]+/g)) {
-    if (!token[0].startsWith('<')) {
-      const value = unquote(token[0]).trim();
-      if (value.length > 0 && stack.length > 0) entries.push([stack.join('__'), value]);
-      continue;
+  if (/^\s*(?:<\?xml\b[^>]*>\s*)?</i.test(content)) {
+    const stack = [];
+    for (const token of content.matchAll(/<[^>]+>|[^<]+/g)) {
+      if (!token[0].startsWith('<')) {
+        const value = unquote(token[0]).trim();
+        if (value.length > 0 && stack.length > 0) entries.push([stack.join('__'), value]);
+        continue;
+      }
+      if (/^<\s*(?:\?|!)/.test(token[0])) continue;
+      const closing = token[0].match(/^<\s*\/\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
+      if (closing) {
+        if (stack.at(-1) === closing[1]) stack.pop();
+        continue;
+      }
+      const opening = token[0].match(/^<\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
+      if (opening && !/\/\s*>$/.test(token[0])) stack.push(opening[1]);
     }
-    if (/^<\s*(?:\?|!)/.test(token[0])) continue;
-    const closing = token[0].match(/^<\s*\/\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
-    if (closing) {
-      if (stack.at(-1) === closing[1]) stack.pop();
-      continue;
-    }
-    const opening = token[0].match(/^<\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
-    if (opening && !/\/\s*>$/.test(token[0])) stack.push(opening[1]);
   }
   return entries;
 }
@@ -200,29 +233,15 @@ function configEntries(content) {
     ...jsonEntries(content),
     ...lineConfigEntries(content),
     ...inlineYamlEntries(content),
+    ...kubernetesNameValueEntries(content),
     ...xmlEntries(content),
   ];
-}
-
-function isConfigurationPath(relativePath) {
-  const basename = path.basename(relativePath).toLowerCase();
-  const extension = path.extname(basename);
-  const segments = relativePath.toLowerCase().split('/');
-  if (segments.some(segment =>
-    ['.github', 'config', 'configs', 'configuration', 'deploy', 'deployment', 'infra'].includes(segment)) ||
-    ['.json', '.yml', '.yaml', '.env', '.config', '.conf', '.toml', '.ini', '.properties', '.xml']
-      .includes(extension) ||
-    basename.startsWith('.env')) return true;
-  if (['.cs', '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.md', '.txt'].includes(extension)) {
-    return false;
-  }
-  return /(?:^|[._-])(?:appsettings|compose|dockerfile|env|runtime|settings|secrets?|credentials?)(?:[._-]|$)/
-    .test(basename);
 }
 
 function isReferenceValue(value) {
   const trimmed = unquote(value).trim();
   if (trimmed.length === 0) return true;
+  if (integrationTokenPattern.test(trimmed) || decodedContainsIntegrationToken(trimmed)) return false;
   if (/^\$\{\{[^}]+\}\}$/.test(trimmed)) return true;
   const compose = trimmed.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*(?:(:\?|\?)(?:[^}]*))?\}$/);
   if (compose) return true;
@@ -235,7 +254,15 @@ function isReferenceValue(value) {
   }
   return /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed) ||
     /^%[A-Za-z_][A-Za-z0-9_]*%$/.test(trimmed) ||
-    /^<[^>]+>$/.test(trimmed);
+    /^<[^>]+>$/.test(trimmed) ||
+    /^(?:null|true|false|default|string\.Empty|Guid\.Empty)$/.test(trimmed) ||
+    /^[A-Z][A-Za-z0-9_.]*(?:Entry|Value|Tree|Options|Settings|Configuration|Credentials|Props|Group|Record)$/.test(trimmed) ||
+    /^[A-Z][A-Za-z0-9_.]*(?:;\s*[A-Za-z_][A-Za-z0-9_]*\??\s*:\s*[A-Z]?[A-Za-z0-9_.]+)+$/.test(trimmed) ||
+    /^new\s+[A-Za-z_][A-Za-z0-9_.<>?]*\([^"'`]*\)$/.test(trimmed) ||
+    /^(?:Configuration|Environment|Options|Settings|Secrets|Credentials)(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(trimmed) ||
+    /^(?:await\s+)?[A-Za-z_][A-Za-z0-9_]*(?:[.?]+[A-Za-z_][A-Za-z0-9_]*)+(?:\[[^\]]+\])?(?:\([^"'`]*\))?$/.test(trimmed) ||
+    /^(?:await\s+)?[A-Za-z_][A-Za-z0-9_]*\([^"'`]*\)$/.test(trimmed) ||
+    /^(?:await\s+)?[A-Za-z_][A-Za-z0-9_.?]*\($/.test(trimmed);
 }
 
 function normalizedName(name) {
@@ -322,8 +349,6 @@ async function validateTrackedConfiguration(root, errors, tracked) {
     if (containsIntegrationToken(content)) {
       errors.push(`${relativePath} must not contain an integration token`);
     }
-    if (!isConfigurationPath(relativePath)) continue;
-
     const entries = configEntries(content);
     const populated = ([name, value]) =>
       !isReferenceValue(value) && !isExplicitCiFixture(relativePath, name, value);
@@ -394,6 +419,10 @@ async function validateCompose(root, errors) {
   if (!/user:\s*["']?\$\{PUNTIRO_CLOUD_UID[^}]*\}:\$\{PUNTIRO_CLOUD_GID/.test(content)) {
     errors.push('infra/compose/cloud-development.yml must run Cloud as the configured service uid and gid');
   }
+  if (/\$\{PUNTIRO_CLOUD_(?:UID|GID|RUNTIME_ENV_FILE):-/.test(content) ||
+      /\$\{Puntiro__Security__DataProtection(?:KeysPath|CertificateHostPath):-/.test(content)) {
+    errors.push('infra/compose/cloud-development.yml must not default Cloud identity or private material paths');
+  }
 }
 
 async function validateProxyBoundary(root, errors) {
@@ -425,35 +454,20 @@ async function validateAgents(root, errors) {
   }
 }
 
-async function validateRestoreOrdering(root, errors) {
+async function validateCheckedWrapperUsage(root, errors) {
   const target = path.join(root, 'docs', 'runbooks', 'cloud-development.md');
   if (!await exists(target)) return;
   const content = await readFile(target, 'utf8');
+  const compact = content.replace(/\\?\r?\n\s*/g, ' ').replace(/\s+/g, ' ');
+  const normal = /node scripts\/cloud-compose\.mjs --mode normal --compose-env infra\/compose\/\.env\.cloud --runtime-env infra\/compose\/cloud-runtime\.env --operation up-cloud/.test(compact);
+  const restoreOperations = ['up-postgres', 'create-cloud', 'start-cloud'].every(operation =>
+    new RegExp(`node scripts/cloud-compose\\.mjs --mode restore --compose-env infra/compose/\\.env\\.cloud\\.restore --runtime-env infra/compose/cloud-runtime\\.restore\\.env --restore-project [^ ]+ --operation ${operation}`).test(compact));
+  const directCloud = /docker compose[\s\S]{0,500}--profile\s+cloud-runtime[\s\S]{0,160}\b(?:create|up|start)\b/.test(content);
   const restoreStart = content.indexOf('PUNTIRO_RESTORE_PROJECT');
-  if (restoreStart === -1) {
-    errors.push('docs/runbooks/cloud-development.md must validate the restore environment before creating or starting restore services');
-    return;
-  }
-  const restore = content.slice(restoreStart);
-  const validation = restore.indexOf('node scripts/validate-cloud-runtime-env.mjs');
-  const operation = restore.search(
-    /docker compose[\s\S]{0,400}-p\s+"?\$PUNTIRO_RESTORE_PROJECT"?[\s\S]{0,240}\b(?:create|up|start)\b/,
-  );
-  if (validation === -1 || operation === -1 || validation > operation) {
-    errors.push('docs/runbooks/cloud-development.md must validate the restore environment before creating or starting restore services');
-  }
-}
-
-async function validateNormalPreflightOrdering(root, errors) {
-  const target = path.join(root, 'docs', 'runbooks', 'cloud-development.md');
-  if (!await exists(target)) return;
-  const content = await readFile(target, 'utf8');
-  const preflight = content.indexOf('node scripts/preflight-cloud-runtime.mjs');
-  const cloudStart = content.search(
-    /docker compose[\s\S]{0,500}--profile\s+cloud-runtime[\s\S]{0,160}\b(?:create|up|start)\b/,
-  );
-  if (preflight === -1 || cloudStart === -1 || preflight > cloudStart) {
-    errors.push('docs/runbooks/cloud-development.md must run normal Cloud preflight before creating or starting Cloud');
+  const restore = restoreStart === -1 ? '' : content.slice(restoreStart);
+  const directRestoreStart = /docker compose[\s\S]{0,400}-p\s+"?\$PUNTIRO_RESTORE_PROJECT"?[\s\S]{0,240}\b(?:create|up|start)\b/.test(restore);
+  if (!normal || !restoreOperations || directCloud || directRestoreStart) {
+    errors.push('docs/runbooks/cloud-development.md must use the checked wrapper for every normal Cloud and restore-project start operation');
   }
 }
 
@@ -473,8 +487,7 @@ export async function validateCloudSecurity(rootUrl) {
     }
   }
   await validateAgents(root, errors);
-  await validateRestoreOrdering(root, errors);
-  await validateNormalPreflightOrdering(root, errors);
+  await validateCheckedWrapperUsage(root, errors);
   return errors;
 }
 

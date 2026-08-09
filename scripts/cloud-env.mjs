@@ -6,7 +6,7 @@ const dotenvName = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 function hasInvalidValueSyntax(value) {
   return value.trim() !== value ||
     /["'`#]/.test(value) ||
-    /\$(?:\(|\{|[A-Za-z_])/.test(value) ||
+    value.includes('$') ||
     /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/u.test(value);
 }
 

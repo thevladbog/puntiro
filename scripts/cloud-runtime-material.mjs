@@ -1,5 +1,9 @@
 import { lstat, readFile, readdir } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function modeOf(metadata) {
   return metadata.mode & 0o777;
@@ -46,8 +50,81 @@ function isExpectedDataProtectionKey(content, expectedId) {
     /<creationDate>[^<]+<\/creationDate>/i.test(content) &&
     /<activationDate>[^<]+<\/activationDate>/i.test(content) &&
     /<expirationDate>[^<]+<\/expirationDate>/i.test(content) &&
-    /<encryptedSecret\b[^>]*decryptorType=["'][^"']+["']/i.test(content) &&
+    /<encryptedSecret\b[^>]*decryptorType=["'][^"']+["'][^>]*>[\s\S]*<[^/!][^>]*>[\s\S]*<\/encryptedSecret>/i.test(content) &&
     /<\/key>\s*$/i.test(content);
+}
+
+export function sanitizedCloudEnvironment(source = process.env) {
+  const result = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (/^(?:PUNTIRO|POSTGRES|CONNECTIONSTRINGS__|ASPNETCORE_|COMPOSE_)/i.test(name) ||
+        /^Puntiro__/i.test(name)) continue;
+    result[name] = value;
+  }
+  return result;
+}
+
+function requireValue(values, name) {
+  const value = values.get(name);
+  if (value === undefined || value.length === 0) {
+    throw new Error(`required Cloud environment variable is missing: ${name}`);
+  }
+  return value;
+}
+
+function runCompiledPreflight({ compose, mode, runtime }) {
+  const environment = {
+    ...sanitizedCloudEnvironment(),
+    PUNTIRO_PREFLIGHT_CONTAINER_CONNECTION: requireValue(
+      runtime,
+      'ConnectionStrings__Puntiro',
+    ),
+    PUNTIRO_PREFLIGHT_HOST_CONNECTION: requireValue(
+      compose,
+      'ConnectionStrings__Puntiro',
+    ),
+    PUNTIRO_PREFLIGHT_DATABASE: requireValue(compose, 'POSTGRES_DB'),
+    PUNTIRO_PREFLIGHT_USERNAME: requireValue(compose, 'POSTGRES_USER'),
+    PUNTIRO_PREFLIGHT_PASSWORD: requireValue(compose, 'POSTGRES_PASSWORD'),
+    PUNTIRO_PREFLIGHT_HOST_PORT: mode === 'restore'
+      ? requireValue(compose, 'PUNTIRO_POSTGRES_PORT')
+      : compose.get('PUNTIRO_POSTGRES_PORT') || '5432',
+    PUNTIRO_PREFLIGHT_KEY_RING: requireValue(
+      runtime,
+      'Puntiro__Security__DataProtectionKeysPath',
+    ),
+    PUNTIRO_PREFLIGHT_CERTIFICATE: requireValue(
+      compose,
+      'Puntiro__Security__DataProtectionCertificateHostPath',
+    ),
+    PUNTIRO_PREFLIGHT_CERTIFICATE_PASSWORD: requireValue(
+      runtime,
+      'Puntiro__Security__DataProtectionCertificatePassword',
+    ),
+  };
+  if (mode === 'restore') {
+    environment.PUNTIRO_PREFLIGHT_TEST_CONNECTION = requireValue(
+      compose,
+      'PUNTIRO_TEST_POSTGRES',
+    );
+  }
+  const result = spawnSync('dotnet', [
+    'run',
+    '--project',
+    'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj',
+    '--configuration',
+    'Release',
+    '--no-restore',
+    '--',
+    'cloud-preflight',
+    '--mode',
+    mode,
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: environment,
+  });
+  if (result.status !== 0) throw new Error('Cloud compiled preflight failed.');
 }
 
 async function validateDataProtectionRing(ringPath, uid, gid) {
@@ -111,6 +188,7 @@ async function validateCertificate(certificatePath, uid, gid) {
 export async function validateCloudRuntimeMaterial({
   compose,
   composeEnvPath,
+  mode,
   runtime,
   runtimeEnvPath,
 }) {
@@ -147,6 +225,7 @@ export async function validateCloudRuntimeMaterial({
 
   await validateDataProtectionRing(ringPath, uid, gid);
   await validateCertificate(certificateHostPath, uid, gid);
+  runCompiledPreflight({ compose, mode, runtime });
 
   return { gid, runtimeEnvMetadata, uid };
 }

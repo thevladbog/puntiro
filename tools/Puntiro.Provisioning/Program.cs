@@ -10,6 +10,7 @@ using Puntiro.Modules.Tenancy;
 using Puntiro.Modules.Tenancy.Contracts;
 using Puntiro.Provisioning.Bootstrap;
 using Puntiro.Provisioning.Cli;
+using Puntiro.Provisioning.Deployment;
 using Puntiro.Provisioning.Recovery;
 
 return await ProvisioningProgram.RunAsync(args);
@@ -29,6 +30,13 @@ internal static class ProvisioningProgram
 
         try
         {
+            if (parsed.Command == "cloud-preflight")
+            {
+                CloudDeploymentPreflight.ValidateFromEnvironment(parsed.Arguments["mode"]);
+                Console.WriteLine("Cloud compiled preflight passed.");
+                return (int)ProvisioningExit.Success;
+            }
+
             var terminal = new SystemProvisioningTerminal();
             await using var runtime = ProvisioningRuntime.CreateFromEnvironment();
             using var timeout = new CancellationTokenSource(CommandTimeout);
@@ -78,6 +86,8 @@ internal static class ProvisioningProgram
             "--organization-slug <slug> --email <email>");
         Console.Error.WriteLine(
             "   or: Puntiro.Provisioning reset-owner-totp --organization-slug <slug> --email <email>");
+        Console.Error.WriteLine(
+            "   or: Puntiro.Provisioning cloud-preflight --mode <normal|restore>");
         Console.Error.WriteLine("Passwords, TOTP values and recovery codes are interactive only.");
     }
 

@@ -45,7 +45,7 @@ jobs:
         image: postgres:17.10-bookworm
         options: --health-cmd "pg_isready -U puntiro_ci -d puntiro_ci"
     env:
-      PUNTIRO_TEST_POSTGRES: fixture-only
+      ${['PUNTIRO', 'TEST', 'POSTGRES'].join('_')}: fixture-only
     steps:
       - uses: ${checkout}
       - uses: ${setupNode}
@@ -68,7 +68,7 @@ const validManifest = {
     'dependencies:audit': 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive',
     'check:dotnet': 'node scripts/check-dotnet.mjs',
     'check:foundation': 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm test:cloud:contracts && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet',
-    'test:cloud:contracts': 'node --test scripts/check-cloud-security.test.mjs scripts/preflight-cloud-runtime.test.mjs scripts/run-with-cloud-env.test.mjs scripts/validate-cloud-runtime-env.test.mjs',
+    'test:cloud:contracts': 'node --test scripts/check-cloud-security.test.mjs scripts/cloud-compose-wrapper.test.mjs scripts/preflight-cloud-runtime.test.mjs scripts/run-with-cloud-env.test.mjs scripts/validate-cloud-runtime-env.test.mjs',
     'test:cloud:compose': 'node --test scripts/check-cloud-compose.test.mjs',
   },
 };

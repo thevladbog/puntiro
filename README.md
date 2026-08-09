@@ -40,10 +40,9 @@ dotnet tool restore
 dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
 dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
 node scripts/check-cloud-security.mjs
-node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env
 ```
 
-`test:cloud:contracts` runs secret/configuration and runtime-preflight mutation tests without PostgreSQL. `test:cloud:compose` resolves the real Compose file across database-only, disabled, proxy-only, network-only, combined, retained-key and missing-runtime configurations and requires Docker Compose. The preflight command is expected to fail before private local runtime material is provisioned. The integration suite requires a real PostgreSQL 17.10 maintenance connection in the secret `PUNTIRO_TEST_POSTGRES` variable. Follow [Cloud development and deployment operations](docs/runbooks/cloud-development.md); the suite never falls back to SQLite or an in-memory provider. Production migrations remain explicit deployment operations, not application startup behavior.
+`test:cloud:contracts` runs secret/configuration, cryptographic-preflight, and checked-wrapper mutation tests without PostgreSQL. `test:cloud:compose` resolves the real Compose file across database-only, disabled, proxy-only, network-only, combined, retained-key and missing-runtime configurations and requires Docker Compose. The integration suite requires a real PostgreSQL 17.10 maintenance connection in the secret `PUNTIRO_TEST_POSTGRES` variable. Starting Cloud is an operator action, not a validation command; use only the checked operation in [Cloud development and deployment operations](docs/runbooks/cloud-development.md). The suite never falls back to SQLite or an in-memory provider. Production migrations remain explicit deployment operations, not application startup behavior.
 
 `pnpm check` always runs the same local pipeline in this order:
 
