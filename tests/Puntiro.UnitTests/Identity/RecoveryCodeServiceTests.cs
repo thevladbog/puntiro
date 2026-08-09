@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -62,6 +63,36 @@ public sealed class RecoveryCodeServiceTests
             new RepeatingSecretGenerator(CreateRecoveryValues()[0]));
 
         Assert.Throws<InvalidOperationException>(() => service.GenerateBatch());
+    }
+
+    [Fact]
+    public void GenerateBatch_call_graph_has_no_immutable_raw_code_stage()
+    {
+        var root = Assert.IsAssignableFrom<MethodInfo>(
+            typeof(RecoveryCodeService).GetMethod(nameof(RecoveryCodeService.GenerateBatch)));
+        var reachableMethods = GetReachableMethods(root);
+        var reachableCalls = reachableMethods.SelectMany(GetDirectCalls).ToArray();
+        var sensitiveBufferConstructions = reachableCalls.Count(
+            static method => IsSensitiveBufferMember(method) && method is ConstructorInfo);
+        var sensitiveBufferDisposals = reachableCalls.Count(
+            static method => IsSensitiveBufferMember(method) &&
+                method.Name == nameof(IDisposable.Dispose));
+
+        Assert.DoesNotContain(reachableMethods, static method => ContainsOpCode(method, OpCodes.Newarr));
+        Assert.True(sensitiveBufferConstructions > 0);
+        Assert.Equal(sensitiveBufferConstructions, sensitiveBufferDisposals);
+        Assert.Contains(
+            reachableCalls,
+            static method => method.DeclaringType == typeof(Base32) &&
+                method.Name == nameof(Base32.Encode));
+        Assert.DoesNotContain(
+            reachableCalls,
+            static method => method.DeclaringType is not null &&
+                (method.DeclaringType == typeof(Base32) ||
+                 method.DeclaringType == typeof(SensitiveValue) ||
+                 method.DeclaringType == typeof(RecoveryCodeService)) &&
+                (method is MethodInfo { ReturnType: var returnType } && returnType == typeof(string) ||
+                 method.GetParameters().Any(static parameter => parameter.ParameterType == typeof(string))));
     }
 
     [Fact]
@@ -208,6 +239,69 @@ public sealed class RecoveryCodeServiceTests
     }
 
     [Theory]
+    [InlineData("", "")]
+    [InlineData("f", "MY")]
+    [InlineData("fo", "MZXQ")]
+    [InlineData("foo", "MZXW6")]
+    [InlineData("foob", "MZXW6YQ")]
+    [InlineData("fooba", "MZXW6YTB")]
+    [InlineData("foobar", "MZXW6YTBOI")]
+    public void Base32_span_encoder_matches_rfc4648_without_allocating_a_result_string(
+        string input,
+        string expected)
+    {
+        var bytes = Encoding.ASCII.GetBytes(input);
+        var output = new char[Base32.GetEncodedLength(bytes.Length)];
+
+        Base32.Encode(bytes, output);
+
+        Assert.Equal(expected.ToCharArray(), output);
+    }
+
+    [Fact]
+    public void Base32_span_encoder_requires_the_exact_destination_length()
+    {
+        byte[] value = [0xff];
+
+        Assert.Equal(2, Base32.GetEncodedLength(value.Length));
+        Assert.Throws<ArgumentException>(() => Base32.Encode(value, new char[1]));
+        Assert.Throws<ArgumentException>(() => Base32.Encode(value, new char[3]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Base32.GetEncodedLength(-1));
+        Assert.Throws<OverflowException>(() => Base32.GetEncodedLength(int.MaxValue));
+    }
+
+    [Fact]
+    public void Sensitive_buffer_disposal_zeroes_owned_storage_and_is_idempotent()
+    {
+        byte[] bytes = [1, 2, 3, 4];
+        char[] characters = ['A', 'B', 'C'];
+        var byteBuffer = new SensitiveBuffer<byte>(bytes);
+        var characterBuffer = new SensitiveBuffer<char>(characters);
+
+        Assert.Equal(bytes, byteBuffer.ReadOnlySpan.ToArray());
+        Assert.Equal(characters, characterBuffer.ReadOnlySpan.ToArray());
+
+        byteBuffer.Dispose();
+        byteBuffer.Dispose();
+        characterBuffer.Dispose();
+        characterBuffer.Dispose();
+
+        Assert.All(bytes, static value => Assert.Equal(0, value));
+        Assert.All(characters, static value => Assert.Equal('\0', value));
+        Assert.Throws<ObjectDisposedException>(() => byteBuffer.ReadOnlySpan.Length);
+        Assert.Throws<ObjectDisposedException>(() => characterBuffer.Span.Length);
+    }
+
+    [Fact]
+    public void Sensitive_buffer_allocates_owned_storage_with_a_strict_length()
+    {
+        using var buffer = new SensitiveBuffer<byte>(4);
+
+        Assert.Equal(4, buffer.Span.Length);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SensitiveBuffer<byte>(-1));
+    }
+
+    [Theory]
     [InlineData("M=")]
     [InlineData("mY")]
     [InlineData("M1")]
@@ -238,5 +332,126 @@ public sealed class RecoveryCodeServiceTests
         return Enumerable.Range(0, 10)
             .Select(index => Enumerable.Range(index * 16, 16).Select(static value => (byte)value).ToArray())
             .ToArray();
+    }
+
+    private static IReadOnlyList<MethodInfo> GetReachableMethods(MethodInfo root)
+    {
+        var pending = new Queue<MethodInfo>();
+        var visited = new HashSet<MethodInfo>();
+        pending.Enqueue(root);
+
+        while (pending.TryDequeue(out var method))
+        {
+            if (!visited.Add(method))
+            {
+                continue;
+            }
+
+            foreach (var called in GetDirectCalls(method))
+            {
+                if (called is MethodInfo nested &&
+                    nested.DeclaringType == typeof(RecoveryCodeService))
+                {
+                    pending.Enqueue(nested);
+                }
+            }
+        }
+
+        return visited.ToArray();
+    }
+
+    private static bool ContainsOpCode(MethodInfo method, OpCode expected)
+    {
+        var il = method.GetMethodBody()?.GetILAsByteArray();
+        Assert.NotNull(il);
+
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            var opCode = ReadOpCode(il, ref offset);
+            if (opCode == expected)
+            {
+                return true;
+            }
+
+            offset += GetOperandSize(opCode.OperandType, il, offset);
+        }
+
+        return false;
+    }
+
+    private static bool IsSensitiveBufferMember(MethodBase method)
+    {
+        return method.DeclaringType is { IsGenericType: true } declaringType &&
+            declaringType.GetGenericTypeDefinition() == typeof(SensitiveBuffer<>);
+    }
+
+    private static IEnumerable<MethodBase> GetDirectCalls(MethodInfo method)
+    {
+        var body = method.GetMethodBody();
+        var il = body?.GetILAsByteArray();
+        Assert.NotNull(il);
+
+        var offset = 0;
+        while (offset < il.Length)
+        {
+            var opCode = ReadOpCode(il, ref offset);
+            if (opCode.OperandType == OperandType.InlineMethod)
+            {
+                var token = BitConverter.ToInt32(il, offset);
+                yield return method.Module.ResolveMethod(
+                    token,
+                    method.DeclaringType?.GetGenericArguments(),
+                    method.GetGenericArguments())!;
+            }
+
+            offset += GetOperandSize(opCode.OperandType, il, offset);
+        }
+    }
+
+    private static OpCode ReadOpCode(byte[] il, ref int offset)
+    {
+        var first = il[offset++];
+        if (first != 0xfe)
+        {
+            return SingleByteOpCodes[first];
+        }
+
+        return MultiByteOpCodes[il[offset++]];
+    }
+
+    private static int GetOperandSize(OperandType operandType, byte[] il, int offset)
+    {
+        return operandType switch
+        {
+            OperandType.InlineNone => 0,
+            OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+            OperandType.InlineVar => 2,
+            OperandType.InlineBrTarget or OperandType.InlineField or OperandType.InlineI or
+                OperandType.InlineMethod or OperandType.InlineSig or OperandType.InlineString or
+                OperandType.InlineTok or OperandType.InlineType or OperandType.ShortInlineR => 4,
+            OperandType.InlineI8 or OperandType.InlineR => 8,
+            OperandType.InlineSwitch => 4 + (BitConverter.ToInt32(il, offset) * 4),
+            _ => throw new InvalidOperationException($"Unexpected IL operand type {operandType}."),
+        };
+    }
+
+    private static readonly OpCode[] SingleByteOpCodes = CreateOpCodeTable(multiByte: false);
+    private static readonly OpCode[] MultiByteOpCodes = CreateOpCodeTable(multiByte: true);
+
+    private static OpCode[] CreateOpCodeTable(bool multiByte)
+    {
+        var table = new OpCode[256];
+        foreach (var field in typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            var opCode = Assert.IsType<OpCode>(field.GetValue(null));
+            var value = unchecked((ushort)opCode.Value);
+            if ((value > byte.MaxValue) == multiByte)
+            {
+                table[value & byte.MaxValue] = opCode;
+            }
+        }
+
+        return table;
     }
 }

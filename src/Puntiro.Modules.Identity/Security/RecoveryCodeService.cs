@@ -32,12 +32,13 @@ internal sealed class RecoveryCodeService : IDisposable
 {
     private const int KeyLength = 32;
     private const int RecoveryValueLength = 16;
-    private const int EncodedLength = 26;
     private const int DefaultBatchSize = 10;
     private const int MaximumGenerationAttempts = DefaultBatchSize * 4;
     private const int GroupSize = 4;
     private const string Purpose = "Puntiro.Identity.RecoveryCode.v1";
     private static readonly byte[] PurposePrefix = Encoding.ASCII.GetBytes($"{Purpose}\0");
+    private static readonly int EncodedLength = Base32.GetEncodedLength(RecoveryValueLength);
+    private static readonly int GroupedLength = GetGroupedLength(EncodedLength);
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly byte[] _key;
@@ -67,14 +68,16 @@ internal sealed class RecoveryCodeService : IDisposable
                  attempt < MaximumGenerationAttempts && generated.Count < DefaultBatchSize;
                  attempt++)
             {
-                var randomValue = new byte[RecoveryValueLength];
+                var randomValue = new SensitiveBuffer<byte>(RecoveryValueLength);
+                var normalized = new SensitiveBuffer<char>(EncodedLength);
+                var grouped = new SensitiveBuffer<char>(GroupedLength);
                 byte[]? verifier = null;
                 SensitiveValue? code = null;
                 try
                 {
-                    _secretGenerator.Fill(randomValue);
-                    var normalized = Base32.Encode(randomValue);
-                    verifier = ComputeVerifier(normalized);
+                    _secretGenerator.Fill(randomValue.Span);
+                    Base32.Encode(randomValue.ReadOnlySpan, normalized.Span);
+                    verifier = ComputeVerifier(normalized.ReadOnlySpan);
 
                     var duplicate = false;
                     foreach (var existing in generated)
@@ -87,7 +90,8 @@ internal sealed class RecoveryCodeService : IDisposable
                         continue;
                     }
 
-                    code = new SensitiveValue(Group(normalized));
+                    Group(normalized.ReadOnlySpan, grouped.Span);
+                    code = new SensitiveValue(grouped.ReadOnlySpan);
                     generated.Add(new GeneratedRecoveryCode(code, verifier));
                     code = null;
                     verifier = null;
@@ -100,7 +104,9 @@ internal sealed class RecoveryCodeService : IDisposable
                         CryptographicOperations.ZeroMemory(verifier);
                     }
 
-                    CryptographicOperations.ZeroMemory(randomValue);
+                    grouped.Dispose();
+                    normalized.Dispose();
+                    randomValue.Dispose();
                 }
             }
 
@@ -122,20 +128,28 @@ internal sealed class RecoveryCodeService : IDisposable
     public bool Verify(string presentedCode, ReadOnlySpan<byte> expectedVerifier)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (expectedVerifier.Length != HMACSHA256.HashSizeInBytes ||
-            !TryNormalize(presentedCode, out var normalized))
-        {
-            return false;
-        }
-
-        var candidate = ComputeVerifier(normalized);
+        var normalized = new SensitiveBuffer<char>(EncodedLength);
         try
         {
-            return CryptographicOperations.FixedTimeEquals(candidate, expectedVerifier);
+            if (expectedVerifier.Length != HMACSHA256.HashSizeInBytes ||
+                !TryNormalize(presentedCode, normalized.Span))
+            {
+                return false;
+            }
+
+            var candidate = ComputeVerifier(normalized.ReadOnlySpan);
+            try
+            {
+                return CryptographicOperations.FixedTimeEquals(candidate, expectedVerifier);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(candidate);
+            }
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(candidate);
+            normalized.Dispose();
         }
     }
 
@@ -150,30 +164,49 @@ internal sealed class RecoveryCodeService : IDisposable
         _disposed = true;
     }
 
-    private byte[] ComputeVerifier(string normalizedCode)
+    private byte[] ComputeVerifier(ReadOnlySpan<char> normalizedCode)
     {
-        var input = new byte[PurposePrefix.Length + EncodedLength];
+        if (normalizedCode.Length != EncodedLength)
+        {
+            throw new ArgumentException(
+                $"Normalized recovery code must contain exactly {EncodedLength} characters.",
+                nameof(normalizedCode));
+        }
+
+        var input = new SensitiveBuffer<byte>(PurposePrefix.Length + EncodedLength);
         try
         {
-            PurposePrefix.CopyTo(input, 0);
-            Encoding.ASCII.GetBytes(normalizedCode.AsSpan(), input.AsSpan(PurposePrefix.Length));
-            return HMACSHA256.HashData(_key, input);
+            PurposePrefix.CopyTo(input.Span);
+            var bytesWritten = Encoding.ASCII.GetBytes(
+                normalizedCode,
+                input.Span[PurposePrefix.Length..]);
+            if (bytesWritten != EncodedLength)
+            {
+                throw new InvalidOperationException("Recovery-code verifier input has an invalid length.");
+            }
+
+            return HMACSHA256.HashData(_key, input.ReadOnlySpan);
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(input);
+            input.Dispose();
         }
     }
 
-    private static bool TryNormalize(string presentedCode, out string normalized)
+    private static bool TryNormalize(string presentedCode, Span<char> normalized)
     {
-        normalized = string.Empty;
+        if (normalized.Length != EncodedLength)
+        {
+            throw new ArgumentException(
+                $"Normalized recovery-code destination must contain exactly {EncodedLength} characters.",
+                nameof(normalized));
+        }
+
         if (presentedCode is null)
         {
             return false;
         }
 
-        Span<char> characters = stackalloc char[EncodedLength];
         var count = 0;
         foreach (var character in presentedCode)
         {
@@ -188,7 +221,7 @@ internal sealed class RecoveryCodeService : IDisposable
                 return false;
             }
 
-            characters[count++] = character;
+            normalized[count++] = character;
         }
 
         if (count != EncodedLength)
@@ -196,27 +229,33 @@ internal sealed class RecoveryCodeService : IDisposable
             return false;
         }
 
-        normalized = new string(characters);
         return true;
     }
 
-    private static string Group(string normalized)
+    private static void Group(ReadOnlySpan<char> normalized, Span<char> output)
     {
-        var separatorCount = (normalized.Length - 1) / GroupSize;
-        return string.Create(normalized.Length + separatorCount, normalized, static (output, input) =>
+        var groupedLength = GetGroupedLength(normalized.Length);
+        if (output.Length != groupedLength)
         {
-            var outputIndex = 0;
-            for (var inputIndex = 0; inputIndex < input.Length; inputIndex++)
-            {
-                if (inputIndex > 0 && inputIndex % GroupSize == 0)
-                {
-                    output[outputIndex++] = '-';
-                }
+            throw new ArgumentException(
+                $"Grouped recovery-code destination must contain exactly {groupedLength} characters.",
+                nameof(output));
+        }
 
-                output[outputIndex++] = input[inputIndex];
+        var outputIndex = 0;
+        for (var inputIndex = 0; inputIndex < normalized.Length; inputIndex++)
+        {
+            if (inputIndex > 0 && inputIndex % GroupSize == 0)
+            {
+                output[outputIndex++] = '-';
             }
-        });
+
+            output[outputIndex++] = normalized[inputIndex];
+        }
     }
+
+    private static int GetGroupedLength(int normalizedLength) =>
+        checked(normalizedLength + ((normalizedLength - 1) / GroupSize));
 
     private static void ClearGenerated(IEnumerable<GeneratedRecoveryCode> generated)
     {
