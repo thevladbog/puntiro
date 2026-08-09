@@ -40,9 +40,22 @@ internal sealed class IssuedIntegrationTokenMaterial : IDisposable
     private string DebuggerDisplay => nameof(IssuedIntegrationTokenMaterial);
 }
 
+internal interface IIntegrationTokenCodec
+{
+    IssuedIntegrationTokenMaterial Issue();
+
+    bool TryRead(string? token, out string publicId, out byte[] secret);
+
+    bool Verify(
+        string token,
+        string expectedPublicId,
+        string keyVersion,
+        ReadOnlySpan<byte> verifier);
+}
+
 internal sealed class IntegrationTokenCodec(
     IntegrationKeyOptions keys,
-    ISecretGenerator secretGenerator)
+    ISecretGenerator secretGenerator) : IIntegrationTokenCodec
 {
     private const string Prefix = "pnt_live_";
     private const int PrefixLength = 9;
@@ -54,7 +67,7 @@ internal sealed class IntegrationTokenCodec(
     private const int TokenLength = PrefixLength + PublicIdLength + 1 + EncodedSecretLength;
     private static readonly byte[] PurposePrefix = Encoding.ASCII.GetBytes(Purpose + "\0");
 
-    internal IssuedIntegrationTokenMaterial Issue()
+    public IssuedIntegrationTokenMaterial Issue()
     {
         Span<byte> publicIdBytes = stackalloc byte[PublicIdByteLength];
         Span<byte> secret = stackalloc byte[SecretLength];
@@ -124,7 +137,7 @@ internal sealed class IntegrationTokenCodec(
         }
     }
 
-    internal bool TryRead(string? token, out string publicId, out byte[] secret)
+    public bool TryRead(string? token, out string publicId, out byte[] secret)
     {
         publicId = string.Empty;
         secret = [];
@@ -177,7 +190,7 @@ internal sealed class IntegrationTokenCodec(
         }
     }
 
-    internal bool Verify(
+    public bool Verify(
         string token,
         string expectedPublicId,
         string keyVersion,

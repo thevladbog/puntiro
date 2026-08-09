@@ -42,7 +42,10 @@ public static class IntegrationsModule
             services.AddSingleton(timeProvider);
         }
 
-        services.AddScoped<IntegrationTokenCodec>();
+        services.AddScoped<IIntegrationTokenCodec, IntegrationTokenCodec>();
+        services.AddScoped<
+            IIntegrationTokenTransactionFactory,
+            EfIntegrationTokenTransactionFactory>();
         services.AddScoped<IIntegrationTokenService, IntegrationTokenService>();
         return services;
     }

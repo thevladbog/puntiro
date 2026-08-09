@@ -69,6 +69,51 @@ public sealed class IntegrationTokenCreationConflictException : Exception
     }
 }
 
+public sealed class IntegrationTokenAttemptCleanupException : AggregateException
+{
+    public IntegrationTokenAttemptCleanupException(
+        Exception primaryException,
+        Exception cleanupException)
+        : base(
+            "Integration token creation and transaction cleanup both failed.",
+            [
+                primaryException ?? throw new ArgumentNullException(nameof(primaryException)),
+                cleanupException ?? throw new ArgumentNullException(nameof(cleanupException))
+            ])
+    {
+    }
+}
+
+public sealed class IntegrationTokenCommittedWithoutCredentialException : Exception
+{
+    public IntegrationTokenCommittedWithoutCredentialException(
+        Guid tokenId,
+        Guid organizationId,
+        Exception innerException)
+        : base(
+            "Integration token commit succeeded, but transaction cleanup failed before " +
+            "the credential could be returned. Revoke the committed token; do not retry automatically.",
+            innerException)
+    {
+        if (tokenId == Guid.Empty)
+        {
+            throw new ArgumentException("Token ID cannot be empty.", nameof(tokenId));
+        }
+
+        if (organizationId == Guid.Empty)
+        {
+            throw new ArgumentException("Organization ID cannot be empty.", nameof(organizationId));
+        }
+
+        TokenId = tokenId;
+        OrganizationId = organizationId;
+    }
+
+    public Guid TokenId { get; }
+
+    public Guid OrganizationId { get; }
+}
+
 public interface IIntegrationTokenService
 {
     Task<IssuedIntegrationToken> CreateAsync(

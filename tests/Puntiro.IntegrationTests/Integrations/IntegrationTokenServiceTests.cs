@@ -1,8 +1,11 @@
+using System.Data;
 using System.Data.Common;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using Puntiro.IntegrationTests.Infrastructure;
 using Puntiro.Modules.Integrations.Contracts;
 using Puntiro.Modules.Integrations.Domain;
@@ -17,6 +20,99 @@ namespace Puntiro.IntegrationTests.Integrations;
 [Collection(PostgresCollection.Name)]
 public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
 {
+    [Fact]
+    public async Task Body_and_transaction_disposal_failures_preserve_primary_and_clear_attempt()
+    {
+        var bodyFailure = new InjectedCreateFailureException();
+        var disposalFailure = new PostgresException(
+            "Injected transaction disposal failure.",
+            "ERROR",
+            "ERROR",
+            PostgresErrorCodes.SerializationFailure);
+        var saveInterceptor = new FailFirstIntegrationTokenSaveInterceptor(bodyFailure);
+        FailingDisposeIntegrationTokenTransactionFactory? transactionFactory = null;
+        TrackingIntegrationTokenCodec? trackingCodec = null;
+        await using var scope = await IntegrationTestScope.CreateAsync(
+            database.ConnectionString,
+            integrationInterceptor: saveInterceptor,
+            transactionFactoryFactory: context =>
+                transactionFactory = new(context, disposalFailure),
+            tokenCodecFactory: codec => trackingCodec = new(codec));
+
+        var error = await Assert.ThrowsAsync<IntegrationTokenAttemptCleanupException>(() =>
+            scope.Service.CreateAsync(
+                scope.Command("Body and disposal failure"),
+                TestContext.Current.CancellationToken));
+
+        Assert.Same(bodyFailure, error.InnerException);
+        Assert.Same(bodyFailure, error.InnerExceptions[0]);
+        Assert.Same(disposalFailure, error.InnerExceptions[1]);
+        var observedTransactionFactory = Assert.IsType<
+            FailingDisposeIntegrationTokenTransactionFactory>(transactionFactory);
+        Assert.Equal(1, observedTransactionFactory.BeginCount);
+        Assert.Equal(1, observedTransactionFactory.DisposeCount);
+        AssertCapturedCredentialCleared(
+            Assert.IsType<TrackingIntegrationTokenCodec>(trackingCodec));
+        var failedToken = Assert.IsType<IntegrationToken>(saveInterceptor.CapturedToken);
+        Assert.True(
+            failedToken.SecretVerifier.All(static value => value == 0),
+            "A double-failed create retained verifier bytes on its domain entity.");
+        Assert.False(
+            scope.Context.ChangeTracker.Entries().Any(),
+            "A double-failed create retained attempt-owned tracked state.");
+        Assert.Equal(0, await scope.Context.IntegrationTokens.AsNoTracking().CountAsync(
+            item => item.OrganizationId == scope.OrganizationId,
+            TestContext.Current.CancellationToken));
+        Assert.Equal(0, await scope.Context.SecurityEvents.AsNoTracking().CountAsync(
+            item => item.OrganizationId == scope.OrganizationId,
+            TestContext.Current.CancellationToken));
+        Assert.Equal(0, await scope.Context.IntegrationTokenScopes.AsNoTracking().CountAsync(
+            item => item.TokenId == failedToken.Id,
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Committed_create_disposal_failure_never_transfers_raw_or_retries()
+    {
+        var disposalFailure = new InjectedTransactionDisposalException();
+        FailingDisposeIntegrationTokenTransactionFactory? transactionFactory = null;
+        TrackingIntegrationTokenCodec? trackingCodec = null;
+        await using var scope = await IntegrationTestScope.CreateAsync(
+            database.ConnectionString,
+            transactionFactoryFactory: context =>
+                transactionFactory = new(context, disposalFailure),
+            tokenCodecFactory: codec => trackingCodec = new(codec));
+
+        var error = await Assert.ThrowsAsync<IntegrationTokenCommittedWithoutCredentialException>(() =>
+            scope.Service.CreateAsync(
+                scope.Command("Committed without credential"),
+                TestContext.Current.CancellationToken));
+
+        Assert.Same(disposalFailure, error.InnerException);
+        Assert.Equal(scope.OrganizationId, error.OrganizationId);
+        Assert.NotEqual(Guid.Empty, error.TokenId);
+        var observedTransactionFactory = Assert.IsType<
+            FailingDisposeIntegrationTokenTransactionFactory>(transactionFactory);
+        Assert.Equal(1, observedTransactionFactory.BeginCount);
+        Assert.Equal(1, observedTransactionFactory.CommitCount);
+        Assert.Equal(1, observedTransactionFactory.DisposeCount);
+        AssertCapturedCredentialCleared(
+            Assert.IsType<TrackingIntegrationTokenCodec>(trackingCodec));
+        Assert.False(
+            scope.Context.ChangeTracker.Entries().Any(),
+            "A committed create with failed disposal retained tracked credential state.");
+        Assert.Equal(1, await scope.Context.IntegrationTokens.AsNoTracking().CountAsync(
+            item => item.OrganizationId == scope.OrganizationId,
+            TestContext.Current.CancellationToken));
+        Assert.Equal(1, await scope.Context.SecurityEvents.AsNoTracking().CountAsync(
+            item => item.OrganizationId == scope.OrganizationId,
+            TestContext.Current.CancellationToken));
+        Assert.Equal(1, await scope.Context.IntegrationTokenScopes.AsNoTracking().CountAsync(
+            item => scope.Context.IntegrationTokens.Any(token =>
+                token.Id == item.TokenId && token.OrganizationId == scope.OrganizationId),
+            TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task Non_retriable_save_failure_cleans_attempt_before_reusing_the_same_scope()
     {
@@ -349,6 +445,17 @@ public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
             candidate.Contains(sensitive, StringComparison.Ordinal),
             "A metadata, JSON, debugger or tracker representation exposed bearer material.");
 
+    private static void AssertCapturedCredentialCleared(TrackingIntegrationTokenCodec codec)
+    {
+        Assert.Equal(1, codec.IssueCount);
+        var rawToken = Assert.IsType<SensitiveValue>(codec.CapturedRawToken);
+        Assert.Throws<ObjectDisposedException>(() => rawToken.Reveal());
+        var verifier = Assert.IsType<byte[]>(codec.CapturedVerifier);
+        Assert.True(
+            verifier.All(static value => value == 0),
+            "A failed transaction lifecycle retained integration verifier bytes.");
+    }
+
     private async Task<TException> AssertFailedCreateIsIsolatedAsync<TException>(
         TException failure,
         CancellationToken cancellationToken,
@@ -417,7 +524,10 @@ internal sealed class IntegrationTestScope : IAsyncDisposable
         string connectionString,
         DateTimeOffset? now = null,
         bool migrate = true,
-        IInterceptor? integrationInterceptor = null)
+        IInterceptor? integrationInterceptor = null,
+        Func<IntegrationsDbContext, IIntegrationTokenTransactionFactory>?
+            transactionFactoryFactory = null,
+        Func<IIntegrationTokenCodec, IIntegrationTokenCodec>? tokenCodecFactory = null)
     {
         var optionsBuilder = new DbContextOptionsBuilder<IntegrationsDbContext>()
             .UseNpgsql(connectionString, npgsql =>
@@ -438,11 +548,20 @@ internal sealed class IntegrationTestScope : IAsyncDisposable
             now ?? new DateTimeOffset(2026, 8, 8, 10, 0, 0, TimeSpan.Zero));
         var keys = IntegrationKeyOptions.ForTesting(
             "integration-v1", Enumerable.Repeat((byte)0x49, 32).ToArray());
-        var codec = new IntegrationTokenCodec(keys, new SystemSecretGenerator());
+        IIntegrationTokenCodec codec = new IntegrationTokenCodec(
+            keys,
+            new SystemSecretGenerator());
+        if (tokenCodecFactory is not null)
+        {
+            codec = tokenCodecFactory(codec);
+        }
+
+        var transactionFactory = transactionFactoryFactory?.Invoke(context) ??
+            new EfIntegrationTokenTransactionFactory(context);
         return new IntegrationTestScope(
             context,
             time,
-            new IntegrationTokenService(context, codec, time));
+            new IntegrationTokenService(context, codec, transactionFactory, time));
     }
 
     internal CreateIntegrationToken Command(string displayName) =>
@@ -516,6 +635,77 @@ internal sealed class FailFirstIntegrationTokenCommitInterceptor(Exception failu
 }
 
 internal sealed class InjectedCreateFailureException : Exception;
+
+internal sealed class InjectedTransactionDisposalException : Exception;
+
+internal sealed class TrackingIntegrationTokenCodec(IIntegrationTokenCodec inner)
+    : IIntegrationTokenCodec
+{
+    internal int IssueCount { get; private set; }
+    internal SensitiveValue? CapturedRawToken { get; private set; }
+    internal byte[]? CapturedVerifier { get; private set; }
+
+    public IssuedIntegrationTokenMaterial Issue()
+    {
+        IssueCount++;
+        var material = inner.Issue();
+        CapturedRawToken = material.RawToken;
+        CapturedVerifier = material.SecretVerifier;
+        return material;
+    }
+
+    public bool TryRead(string? token, out string publicId, out byte[] secret) =>
+        inner.TryRead(token, out publicId, out secret);
+
+    public bool Verify(
+        string token,
+        string expectedPublicId,
+        string keyVersion,
+        ReadOnlySpan<byte> verifier) =>
+        inner.Verify(token, expectedPublicId, keyVersion, verifier);
+}
+
+internal sealed class FailingDisposeIntegrationTokenTransactionFactory(
+    IntegrationsDbContext context,
+    Exception disposalFailure) : IIntegrationTokenTransactionFactory
+{
+    internal int BeginCount { get; private set; }
+    internal int CommitCount { get; private set; }
+    internal int DisposeCount { get; private set; }
+
+    public async Task<IIntegrationTokenTransaction> BeginSerializableAsync(
+        CancellationToken cancellationToken)
+    {
+        BeginCount++;
+        var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        return new FailingDisposeIntegrationTokenTransaction(
+            transaction,
+            disposalFailure,
+            this);
+    }
+
+    private sealed class FailingDisposeIntegrationTokenTransaction(
+        IDbContextTransaction transaction,
+        Exception disposalFailure,
+        FailingDisposeIntegrationTokenTransactionFactory owner)
+        : IIntegrationTokenTransaction
+    {
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            owner.CommitCount++;
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            owner.DisposeCount++;
+            await transaction.DisposeAsync();
+            throw disposalFailure;
+        }
+    }
+}
 
 internal sealed class IntegrationTimeProvider(DateTimeOffset utcNow) : TimeProvider
 {

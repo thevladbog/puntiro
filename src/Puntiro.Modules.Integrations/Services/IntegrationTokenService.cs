@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Data;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -12,7 +13,8 @@ namespace Puntiro.Modules.Integrations.Services;
 
 internal sealed class IntegrationTokenService(
     IntegrationsDbContext context,
-    IntegrationTokenCodec tokenCodec,
+    IIntegrationTokenCodec tokenCodec,
+    IIntegrationTokenTransactionFactory transactionFactory,
     TimeProvider timeProvider) : IIntegrationTokenService
 {
     private const int MaximumActiveTokens = 2;
@@ -35,63 +37,133 @@ internal sealed class IntegrationTokenService(
         {
             IssuedIntegrationTokenMaterial? material = null;
             IntegrationToken? token = null;
+            IIntegrationTokenTransaction? transaction = null;
+            ExceptionDispatchInfo? bodyFailure = null;
+            Exception? disposalFailure = null;
+            var commitConfirmed = false;
             try
             {
-                await using var transaction = await context.Database.BeginTransactionAsync(
-                    IsolationLevel.Serializable,
-                    cancellationToken);
-                var activeSlots = await context.IntegrationTokens
-                    .AsNoTracking()
-                    .Where(item =>
-                        item.OrganizationId == command.OrganizationId &&
-                        item.RevokedAtUtc == null)
-                    .Select(item => item.ActiveSlot)
-                    .ToListAsync(cancellationToken);
-                if (activeSlots.Count >= MaximumActiveTokens)
+                try
                 {
-                    throw new ActiveTokenLimitException();
+                    transaction = await transactionFactory.BeginSerializableAsync(
+                        cancellationToken);
+                    var activeSlots = await context.IntegrationTokens
+                        .AsNoTracking()
+                        .Where(item =>
+                            item.OrganizationId == command.OrganizationId &&
+                            item.RevokedAtUtc == null)
+                        .Select(item => item.ActiveSlot)
+                        .ToListAsync(cancellationToken);
+                    if (activeSlots.Count >= MaximumActiveTokens)
+                    {
+                        throw new ActiveTokenLimitException();
+                    }
+
+                    var activeSlot = activeSlots.Contains((short?)1) ? (short)2 : (short)1;
+                    material = tokenCodec.Issue();
+                    var now = timeProvider.GetUtcNow();
+                    token = IntegrationToken.Issue(
+                        Guid.CreateVersion7(),
+                        material.PublicId,
+                        command.OrganizationId,
+                        displayName,
+                        material.SecretVerifier,
+                        material.KeyVersion,
+                        command.CreatedByUserId,
+                        now,
+                        scopes,
+                        activeSlot);
+                    context.IntegrationTokens.Add(token);
+                    context.SecurityEvents.Add(IntegrationSecurityEvent.Created(
+                        command.OrganizationId,
+                        command.CreatedByUserId,
+                        token.Id,
+                        now));
+                    await context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    commitConfirmed = true;
+                }
+                catch (Exception exception)
+                {
+                    bodyFailure = ExceptionDispatchInfo.Capture(exception);
                 }
 
-                var activeSlot = activeSlots.Contains((short?)1) ? (short)2 : (short)1;
-                material = tokenCodec.Issue();
-                var now = timeProvider.GetUtcNow();
-                token = IntegrationToken.Issue(
-                    Guid.CreateVersion7(),
-                    material.PublicId,
-                    command.OrganizationId,
-                    displayName,
-                    material.SecretVerifier,
-                    material.KeyVersion,
-                    command.CreatedByUserId,
-                    now,
-                    scopes,
-                    activeSlot);
-                context.IntegrationTokens.Add(token);
-                context.SecurityEvents.Add(IntegrationSecurityEvent.Created(
-                    command.OrganizationId,
-                    command.CreatedByUserId,
-                    token.Id,
-                    now));
-                await context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                var metadata = ToMetadata(token);
-                DetachAndClear(token);
-                var rawToken = material.TakeRawToken();
-                return new IssuedIntegrationToken(metadata, rawToken);
-            }
-            catch (Exception exception)
-            {
-                CleanupFailedCreationAttempt(token);
-                if (!IsRetriableCreationFailure(exception))
+                if (transaction is not null)
                 {
-                    throw;
+                    try
+                    {
+                        await transaction.DisposeAsync();
+                    }
+                    catch (Exception exception)
+                    {
+                        disposalFailure = exception;
+                    }
                 }
 
-                lastRetriableError = exception;
-                if (attempt == MaximumCreationAttempts)
+                if (bodyFailure is not null)
                 {
-                    throw new IntegrationTokenCreationConflictException(exception);
+                    var primaryException = bodyFailure.SourceException;
+                    CleanupFailedCreationAttempt(token);
+                    if (disposalFailure is not null)
+                    {
+                        throw new IntegrationTokenAttemptCleanupException(
+                            primaryException,
+                            disposalFailure);
+                    }
+
+                    if (!IsRetriableCreationFailure(primaryException))
+                    {
+                        bodyFailure.Throw();
+                    }
+
+                    lastRetriableError = primaryException;
+                    if (attempt == MaximumCreationAttempts)
+                    {
+                        throw new IntegrationTokenCreationConflictException(primaryException);
+                    }
+
+                    continue;
+                }
+
+                if (disposalFailure is not null)
+                {
+                    CleanupFailedCreationAttempt(token);
+                    throw new IntegrationTokenCommittedWithoutCredentialException(
+                        token?.Id ?? throw new InvalidOperationException(
+                            "A committed integration token was not available."),
+                        command.OrganizationId,
+                        disposalFailure);
+                }
+
+                if (!commitConfirmed || token is null || material is null)
+                {
+                    throw new InvalidOperationException(
+                        "Integration token creation ended without a committed result.");
+                }
+
+                try
+                {
+                    var metadata = ToMetadata(token);
+                    DetachAndClear(token);
+                    var rawToken = material.TakeRawToken();
+                    try
+                    {
+                        return new IssuedIntegrationToken(metadata, rawToken);
+                    }
+                    catch
+                    {
+                        rawToken.Dispose();
+                        throw;
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is not IntegrationTokenCommittedWithoutCredentialException)
+                {
+                    CleanupFailedCreationAttempt(token);
+                    throw new IntegrationTokenCommittedWithoutCredentialException(
+                        token.Id,
+                        token.OrganizationId,
+                        exception);
                 }
             }
             finally
