@@ -83,14 +83,7 @@ internal static class ProvisioningProgram
 
     private static void WriteOutcome(ProvisioningExit exit)
     {
-        Console.Error.WriteLine(exit switch
-        {
-            ProvisioningExit.Success => "Provisioning completed.",
-            ProvisioningExit.InvalidArguments => "Provisioning arguments are invalid.",
-            ProvisioningExit.Conflict => "Provisioning stopped because durable state conflicts with the request.",
-            ProvisioningExit.InvalidCredentials => "Provisioning credentials or confirmation are invalid.",
-            _ => "Provisioning failed because infrastructure is unavailable."
-        });
+        ProvisioningOutcome.Write(Console.Error, exit);
     }
 }
 

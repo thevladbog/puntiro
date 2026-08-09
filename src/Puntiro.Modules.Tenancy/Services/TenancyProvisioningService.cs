@@ -1,6 +1,5 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using Puntiro.Modules.Tenancy.Contracts;
 using Puntiro.Modules.Tenancy.Domain;
@@ -227,6 +226,8 @@ internal sealed class TenancyProvisioningService(
         var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
+        var lease = new TrustedActiveOwnerMutationLease(
+            new EfTrustedMutationTransaction(transaction));
         try
         {
             await LockOrganizationAsync(organizationId, cancellationToken);
@@ -240,16 +241,29 @@ internal sealed class TenancyProvisioningService(
                 membership.Role != MembershipRole.Owner ||
                 membership.Status != MembershipStatus.Active)
             {
-                await transaction.RollbackAsync(cancellationToken);
-                await transaction.DisposeAsync();
+                await lease.DisposeAsync();
                 return null;
             }
 
-            return new TrustedActiveOwnerMutationLease(transaction);
+            return lease;
         }
-        catch
+        catch (Exception primaryError)
         {
-            await transaction.DisposeAsync();
+            try
+            {
+                await lease.DisposeAsync();
+            }
+            catch (Exception cleanupError)
+            {
+                throw new AggregateException(
+                    "The trusted mutation lease could not be acquired or cleaned up.",
+                    primaryError,
+                    cleanupError);
+            }
+
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo
+                .Capture(primaryError)
+                .Throw();
             throw;
         }
     }
@@ -380,21 +394,4 @@ internal sealed class TenancyProvisioningService(
             membership.Version);
     }
 
-    private sealed class TrustedActiveOwnerMutationLease(
-        IDbContextTransaction transaction) : ITrustedActiveOwnerMutationLease
-    {
-        private IDbContextTransaction? _transaction = transaction;
-
-        public async ValueTask DisposeAsync()
-        {
-            var current = Interlocked.Exchange(ref _transaction, null);
-            if (current is null)
-            {
-                return;
-            }
-
-            await current.RollbackAsync(CancellationToken.None);
-            await current.DisposeAsync();
-        }
-    }
 }

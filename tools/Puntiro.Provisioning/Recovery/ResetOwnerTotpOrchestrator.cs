@@ -16,13 +16,13 @@ public sealed class ResetOwnerTotpOrchestrator(
         string email,
         CancellationToken cancellationToken)
     {
+        if (!await ProvisioningReadiness.IsReadyAsync(readiness, cancellationToken))
+        {
+            return ProvisioningExit.InfrastructureFailure;
+        }
+
         try
         {
-            if (!await readiness.IsReadyForTrustedProvisioningAsync(cancellationToken))
-            {
-                return ProvisioningExit.InfrastructureFailure;
-            }
-
             var organizationId = await tenancy.FindOrganizationIdForTrustedProvisioningAsync(
                 organizationSlug,
                 cancellationToken);
@@ -64,31 +64,13 @@ public sealed class ResetOwnerTotpOrchestrator(
                     pending.RecoveryCodes,
                     cancellationToken);
                 using var firstCode = await terminal.ReadTotpAsync(cancellationToken);
-                try
-                {
-                    await using var lease = await tenancy
-                        .TryAcquireActiveOwnerMutationLeaseForTrustedProvisioningAsync(
-                            organizationId.Value,
-                            userId.Value,
-                            cancellationToken);
-                    if (lease is null)
-                    {
-                        return ProvisioningExit.InvalidCredentials;
-                    }
-
-                    await firstCode.Use(code => identity.CompleteOwnerTotpResetAsync(
-                        pending,
-                        new string(code),
-                        new IdentityAuditContext(userId.Value, "cli-totp-reset-complete"),
-                        cancellationToken));
-                }
-                catch (InvalidOperationException)
-                {
-                    return ProvisioningExit.InvalidCredentials;
-                }
+                return await CompleteUnderFinalAuthorizationAsync(
+                    organizationId.Value,
+                    userId.Value,
+                    pending,
+                    firstCode,
+                    cancellationToken);
             }
-
-            return ProvisioningExit.Success;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -102,5 +84,61 @@ public sealed class ResetOwnerTotpOrchestrator(
         {
             return ProvisioningExit.InfrastructureFailure;
         }
+    }
+
+    private async Task<ProvisioningExit> CompleteUnderFinalAuthorizationAsync(
+        Guid organizationId,
+        Guid userId,
+        PendingOwnerTotpReset pending,
+        Puntiro.Security.SensitiveValue firstCode,
+        CancellationToken cancellationToken)
+    {
+        ITrustedActiveOwnerMutationLease? lease;
+        try
+        {
+            lease = await tenancy.TryAcquireActiveOwnerMutationLeaseForTrustedProvisioningAsync(
+                organizationId,
+                userId,
+                cancellationToken);
+        }
+        catch (Exception)
+        {
+            return ProvisioningExit.InfrastructureFailure;
+        }
+
+        if (lease is null)
+        {
+            return ProvisioningExit.InvalidCredentials;
+        }
+
+        ProvisioningExit completionExit;
+        try
+        {
+            await firstCode.Use(code => identity.CompleteOwnerTotpResetAsync(
+                pending,
+                new string(code),
+                new IdentityAuditContext(userId, "cli-totp-reset-complete"),
+                cancellationToken));
+            completionExit = ProvisioningExit.Success;
+        }
+        catch (InvalidOperationException)
+        {
+            completionExit = ProvisioningExit.InvalidCredentials;
+        }
+        catch (Exception)
+        {
+            completionExit = ProvisioningExit.InfrastructureFailure;
+        }
+
+        try
+        {
+            await lease.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            return ProvisioningExit.InfrastructureFailure;
+        }
+
+        return completionExit;
     }
 }

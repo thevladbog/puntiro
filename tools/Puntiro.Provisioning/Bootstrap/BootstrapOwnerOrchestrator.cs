@@ -18,13 +18,13 @@ public sealed class BootstrapOwnerOrchestrator(
         string email,
         CancellationToken cancellationToken)
     {
+        if (!await ProvisioningReadiness.IsReadyAsync(readiness, cancellationToken))
+        {
+            return ProvisioningExit.InfrastructureFailure;
+        }
+
         try
         {
-            if (!await readiness.IsReadyForTrustedProvisioningAsync(cancellationToken))
-            {
-                return ProvisioningExit.InfrastructureFailure;
-            }
-
             var organization = await tenancy.GetOrCreateProvisioningAsync(
                 organizationName,
                 organizationSlug,
