@@ -264,6 +264,14 @@ internal sealed class AdminRateLimitService(PuntiroCloudOptions options, TimePro
     internal bool TryStepUp(Guid sessionId, out int retryAfter) =>
         TryAcquire($"step-up:{sessionId:N}", options.Security.StepUpSessionLimit, out retryAfter);
 
+    internal bool TryIntegrationTokenAdministration(
+        IPAddress? address,
+        out int retryAfter) =>
+        TryAcquire(
+            $"integration-token-admin:{address?.ToString() ?? "unknown"}",
+            permitLimit: 120,
+            out retryAfter);
+
     private bool TryAcquire(string partition, int permitLimit, out int retryAfter)
     {
         lock (_gate)

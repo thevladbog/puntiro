@@ -238,7 +238,7 @@ public sealed class IntegrationBearerUnknownRateLimitTests(CloudWebApplicationFa
         using var client = factory.CreateClient(CloudWebApplicationFactory.SecureClientOptions());
         client.DefaultRequestHeaders.TryAddWithoutValidation(
             "Authorization",
-            "Bearer " + UnknownToken());
+            "Bearer " + IntegrationBearerTestToken.UnknownCanonical());
         client.DefaultRequestHeaders.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.10");
 
         for (var attempt = 0; attempt < 120; attempt++)
@@ -262,8 +262,64 @@ public sealed class IntegrationBearerUnknownRateLimitTests(CloudWebApplicationFa
         Assert.Equal("60", Assert.Single(limited.Headers.GetValues("Retry-After")));
     }
 
-    private static string UnknownToken() =>
-        "pnt_" + "live_" + new string('A', 22) + "." + new string('A', 43);
+}
+
+public sealed class IntegrationBearerPreAuthenticationRateLimitTests(
+    CloudWebApplicationFactory factory) : IClassFixture<CloudWebApplicationFactory>
+{
+    [Fact]
+    public async Task Exhausted_direct_peer_gate_stops_database_auth_for_concurrent_burst()
+    {
+        var authenticationCalls = new IntegrationAuthenticationCallCounter();
+        using var production = factory.CreateProductionFactory(
+            includeIntegrationTestProbes: true,
+            integrationAuthenticationCalls: authenticationCalls);
+        using var client = production.CreateClient(
+            CloudWebApplicationFactory.SecureClientOptions());
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Authorization",
+            "Bearer " + IntegrationBearerTestToken.UnknownCanonical());
+
+        var boundaryBurst = await Task.WhenAll(Enumerable.Range(0, 160).Select(_ => client.GetAsync(
+            "/api/v1/test/shipments/read",
+            TestContext.Current.CancellationToken)));
+        Assert.Equal(120, boundaryBurst.Count(response =>
+            response.StatusCode == HttpStatusCode.Unauthorized));
+        Assert.Equal(40, boundaryBurst.Count(response =>
+            response.StatusCode == HttpStatusCode.TooManyRequests));
+        Assert.Equal(120, authenticationCalls.Count);
+
+        var beforeExhaustedRequests = authenticationCalls.Count;
+        using var firstLimited = await client.GetAsync(
+            "/api/v1/test/shipments/read",
+            TestContext.Current.CancellationToken);
+        var burst = await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => client.GetAsync(
+            "/api/v1/test/shipments/read",
+            TestContext.Current.CancellationToken)));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, firstLimited.StatusCode);
+        Assert.Equal("60", Assert.Single(firstLimited.Headers.GetValues("Retry-After")));
+        Assert.All(burst, response => Assert.Equal(
+            HttpStatusCode.TooManyRequests,
+            response.StatusCode));
+        Assert.Equal(beforeExhaustedRequests, authenticationCalls.Count);
+        foreach (var response in boundaryBurst.Concat(burst))
+        {
+            response.Dispose();
+        }
+    }
+}
+
+internal static class IntegrationBearerTestToken
+{
+    internal static string UnknownCanonical() =>
+        "pnt_" + "live_" + Base64Url(Enumerable.Repeat((byte)0x01, 16).ToArray()) + "." +
+        Base64Url(Enumerable.Repeat((byte)0x02, 32).ToArray());
+
+    private static string Base64Url(byte[] value) => Convert.ToBase64String(value)
+        .TrimEnd('=')
+        .Replace('+', '-')
+        .Replace('/', '_');
 }
 
 internal sealed record IntegrationProbeResponse(Guid TokenId, Guid OrganizationId);

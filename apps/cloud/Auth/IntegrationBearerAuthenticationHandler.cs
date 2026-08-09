@@ -31,9 +31,16 @@ public sealed class IntegrationBearerAuthenticationHandler(
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (!rateLimits.TryPreAuthenticate(
+                Request.HttpContext.Connection.RemoteIpAddress,
+                out var retryAfter))
+        {
+            MarkRateLimited(retryAfter);
+            return AuthenticateResult.Fail("Integration request is rate limited.");
+        }
+
         if (!TryReadToken(out var presentedToken))
         {
-            ApplyUnknownLimit();
             return AuthenticateResult.Fail("Integration credential is unavailable.");
         }
 
@@ -43,7 +50,6 @@ public sealed class IntegrationBearerAuthenticationHandler(
                 principal.OrganizationId,
                 Context.RequestAborted))
         {
-            ApplyUnknownLimit();
             return AuthenticateResult.Fail("Integration credential is unavailable.");
         }
 
@@ -51,9 +57,9 @@ public sealed class IntegrationBearerAuthenticationHandler(
         if (!rateLimits.TryVerified(
                 Request.HttpContext.Connection.RemoteIpAddress,
                 publicId,
-                out var retryAfter))
+                out var verifiedRetryAfter))
         {
-            MarkRateLimited(retryAfter);
+            MarkRateLimited(verifiedRetryAfter);
             return AuthenticateResult.Fail("Integration request is rate limited.");
         }
 
@@ -117,16 +123,6 @@ public sealed class IntegrationBearerAuthenticationHandler(
         return token.StartsWith(Prefix, StringComparison.Ordinal);
     }
 
-    private void ApplyUnknownLimit()
-    {
-        if (!rateLimits.TryUnknown(
-                Request.HttpContext.Connection.RemoteIpAddress,
-                out var retryAfter))
-        {
-            MarkRateLimited(retryAfter);
-        }
-    }
-
     private void MarkRateLimited(int retryAfter) => Context.Items[RateLimitedItem] = retryAfter;
 }
 
@@ -172,8 +168,8 @@ public sealed class IntegrationBearerRateLimitService(
     internal bool TryVerified(IPAddress? address, string publicId, out int retryAfter) =>
         TryAcquire($"verified:{Peer(address)}:{Hash(publicId)}", out retryAfter);
 
-    internal bool TryUnknown(IPAddress? address, out int retryAfter) =>
-        TryAcquire($"unknown:{Peer(address)}", out retryAfter);
+    internal bool TryPreAuthenticate(IPAddress? address, out int retryAfter) =>
+        TryAcquire($"preauth:{Peer(address)}", out retryAfter);
 
     public void Dispose() => CryptographicOperations.ZeroMemory(_partitionKey);
 

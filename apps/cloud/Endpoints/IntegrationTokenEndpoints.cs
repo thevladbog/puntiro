@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Puntiro.Cloud.Configuration;
 using Puntiro.Cloud.Http;
+using Puntiro.Cloud.OpenApi;
 using Puntiro.Modules.Integrations.Contracts;
 using Puntiro.Modules.Integrations.Domain;
 
@@ -52,22 +53,76 @@ public static class IntegrationTokenEndpoints
             .WithName("IntegrationTokenList")
             .Produces<IntegrationTokenResponse[]>()
             .Produces<ApiProblemDocument>(StatusCodes.Status401Unauthorized, "application/problem+json")
-            .Produces<ApiProblemDocument>(StatusCodes.Status403Forbidden, "application/problem+json");
+            .Produces<ApiProblemDocument>(StatusCodes.Status403Forbidden, "application/problem+json")
+            .Produces<ApiProblemDocument>(StatusCodes.Status429TooManyRequests, "application/problem+json")
+            .WithMetadata(
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status401Unauthorized,
+                    "auth.session_expired"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status403Forbidden,
+                    "auth.forbidden"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status429TooManyRequests,
+                    "auth.rate_limited"));
         group.MapPost("", CreateAsync)
             .WithName("IntegrationTokenCreate")
+            .Accepts<CreateIntegrationTokenRequest>("application/json")
             .Produces<IssuedIntegrationTokenResponse>(StatusCodes.Status201Created)
             .Produces<ApiProblemDocument>(StatusCodes.Status400BadRequest, "application/problem+json")
             .Produces<ApiProblemDocument>(StatusCodes.Status401Unauthorized, "application/problem+json")
             .Produces<ApiProblemDocument>(StatusCodes.Status403Forbidden, "application/problem+json")
-            .Produces<ApiProblemDocument>(StatusCodes.Status409Conflict, "application/problem+json");
+            .Produces<ApiProblemDocument>(StatusCodes.Status409Conflict, "application/problem+json")
+            .Produces<ApiProblemDocument>(StatusCodes.Status429TooManyRequests, "application/problem+json")
+            .WithMetadata(
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status400BadRequest,
+                    "request.invalid"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status401Unauthorized,
+                    "auth.session_expired"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status403Forbidden,
+                    "auth.csrf_invalid",
+                    "auth.forbidden",
+                    "auth.step_up_required"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status409Conflict,
+                    "integration_token.active_limit",
+                    "integration_token.creation_conflict"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status429TooManyRequests,
+                    "auth.rate_limited"));
         group.MapPost("/{id:guid}/revoke", RevokeAsync)
             .WithName("IntegrationTokenRevoke")
+            .Accepts<RevokeIntegrationTokenRequest>("application/json")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiProblemDocument>(StatusCodes.Status400BadRequest, "application/problem+json")
             .Produces<ApiProblemDocument>(StatusCodes.Status401Unauthorized, "application/problem+json")
             .Produces<ApiProblemDocument>(StatusCodes.Status403Forbidden, "application/problem+json")
             .Produces<ApiProblemDocument>(StatusCodes.Status404NotFound, "application/problem+json")
-            .Produces<ApiProblemDocument>(StatusCodes.Status409Conflict, "application/problem+json");
+            .Produces<ApiProblemDocument>(StatusCodes.Status409Conflict, "application/problem+json")
+            .Produces<ApiProblemDocument>(StatusCodes.Status429TooManyRequests, "application/problem+json")
+            .WithMetadata(
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status400BadRequest,
+                    "request.invalid"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status401Unauthorized,
+                    "auth.session_expired"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status403Forbidden,
+                    "auth.csrf_invalid",
+                    "auth.forbidden"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status404NotFound,
+                    "integration_token.not_found"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status409Conflict,
+                    "integration_token.version_conflict"),
+                new ApiProblemResponseMetadata(
+                    StatusCodes.Status429TooManyRequests,
+                    "auth.rate_limited"));
         return endpoints;
     }
 
@@ -75,8 +130,16 @@ public static class IntegrationTokenEndpoints
         HttpContext context,
         TenantContext tenant,
         IIntegrationTokenService tokens,
+        AdminRateLimitService rateLimits,
         CancellationToken cancellationToken)
     {
+        if (!rateLimits.TryIntegrationTokenAdministration(
+                context.Connection.RemoteIpAddress,
+                out var retryAfter))
+        {
+            return RateLimited(context, retryAfter);
+        }
+
         if (!tenant.IsEstablished)
         {
             return SessionUnavailable(context);
@@ -90,9 +153,17 @@ public static class IntegrationTokenEndpoints
         HttpContext context,
         TenantContext tenant,
         IIntegrationTokenService tokens,
+        AdminRateLimitService rateLimits,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
+        if (!rateLimits.TryIntegrationTokenAdministration(
+                context.Connection.RemoteIpAddress,
+                out var retryAfter))
+        {
+            return RateLimited(context, retryAfter);
+        }
+
         if (!tenant.IsEstablished)
         {
             return SessionUnavailable(context);
@@ -156,8 +227,16 @@ public static class IntegrationTokenEndpoints
         HttpContext context,
         TenantContext tenant,
         IIntegrationTokenService tokens,
+        AdminRateLimitService rateLimits,
         CancellationToken cancellationToken)
     {
+        if (!rateLimits.TryIntegrationTokenAdministration(
+                context.Connection.RemoteIpAddress,
+                out var retryAfter))
+        {
+            return RateLimited(context, retryAfter);
+        }
+
         if (!tenant.IsEstablished)
         {
             return SessionUnavailable(context);
@@ -270,6 +349,17 @@ public static class IntegrationTokenEndpoints
         StatusCodes.Status401Unauthorized,
         "auth.session_expired",
         "The admin session is unavailable or expired.");
+
+    private static IResult RateLimited(HttpContext context, int retryAfter)
+    {
+        context.Response.Headers.RetryAfter = retryAfter.ToString(
+            CultureInfo.InvariantCulture);
+        return ApiProblem.Result(
+            context,
+            StatusCodes.Status429TooManyRequests,
+            "auth.rate_limited",
+            "Too many Admin requests.");
+    }
 
     private sealed class IssuedIntegrationTokenResult(IssuedIntegrationToken issued) : IResult
     {

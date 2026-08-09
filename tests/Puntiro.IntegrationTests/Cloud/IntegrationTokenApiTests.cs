@@ -144,6 +144,40 @@ public sealed class IntegrationTokenApiLimitTests(CloudWebApplicationFactory fac
     }
 }
 
+public sealed class IntegrationTokenApiRateLimitTests(CloudWebApplicationFactory factory)
+    : IClassFixture<CloudWebApplicationFactory>
+{
+    [Fact]
+    public async Task Admin_token_routes_return_the_documented_rate_limit_problem()
+    {
+        using var client = factory.CreateSecureClient();
+        _ = await CloudIntegrationTestClient.LoginAndGetCsrfAsync(client, factory);
+        client.DefaultRequestHeaders.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.40");
+
+        for (var attempt = 0; attempt < 120; attempt++)
+        {
+            Assert.Equal(
+                HttpStatusCode.OK,
+                (await client.GetAsync(
+                    "/api/admin/integration-tokens",
+                    TestContext.Current.CancellationToken)).StatusCode);
+        }
+
+        client.DefaultRequestHeaders.Remove("X-Forwarded-For");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.41");
+        var limited = await client.GetAsync(
+            "/api/admin/integration-tokens",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.Equal("60", Assert.Single(limited.Headers.GetValues("Retry-After")));
+        Assert.Equal(
+            "auth.rate_limited",
+            (await limited.Content.ReadFromJsonAsync<ApiProblemResponse>(
+                TestContext.Current.CancellationToken))!.Code);
+    }
+}
+
 public sealed class IntegrationTokenApiRevokeTests(CloudWebApplicationFactory factory)
     : IClassFixture<CloudWebApplicationFactory>
 {

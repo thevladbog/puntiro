@@ -32,6 +32,20 @@ public sealed class AuthenticationOperationTransformer : IOpenApiOperationTransf
                         context.Document,
                         null)] = [integrationScope.Replace("integration.", string.Empty, StringComparison.Ordinal)]
                 });
+                ApplyProblemResponses(
+                    operation,
+                    context.Document,
+                    [
+                        new ApiProblemResponseMetadata(
+                            StatusCodes.Status401Unauthorized,
+                            "integration.invalid_credentials"),
+                        new ApiProblemResponseMetadata(
+                            StatusCodes.Status403Forbidden,
+                            "integration.scope_forbidden"),
+                        new ApiProblemResponseMetadata(
+                            StatusCodes.Status429TooManyRequests,
+                            "integration.rate_limited")
+                    ]);
                 return Task.CompletedTask;
             }
 
@@ -54,7 +68,49 @@ public sealed class AuthenticationOperationTransformer : IOpenApiOperationTransf
             }
         }
 
+        ApplyProblemResponses(
+            operation,
+            context.Document,
+            metadata.OfType<ApiProblemResponseMetadata>());
+
         return Task.CompletedTask;
+    }
+
+    private static void ApplyProblemResponses(
+        OpenApiOperation operation,
+        OpenApiDocument? document,
+        IEnumerable<ApiProblemResponseMetadata> metadata)
+    {
+        operation.Responses ??= new OpenApiResponses();
+        foreach (var group in metadata.GroupBy(item => item.StatusCode))
+        {
+            var status = group.Key.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            OpenApiResponse response;
+            if (!operation.Responses.TryGetValue(status, out var existing))
+            {
+                response = new OpenApiResponse();
+                operation.Responses[status] = response;
+            }
+            else
+            {
+                response = existing as OpenApiResponse ?? new OpenApiResponse
+                {
+                    Description = existing.Description
+                };
+                operation.Responses[status] = response;
+            }
+
+            var codes = group.SelectMany(item => item.Codes)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            response.Description = "Problem codes: " + string.Join(", ", codes) + ".";
+            response.Content ??= new Dictionary<string, OpenApiMediaType>(StringComparer.Ordinal);
+            response.Content["application/problem+json"] = new OpenApiMediaType
+            {
+                Schema = new OpenApiSchemaReference("ApiProblemDocument", document, null)
+            };
+        }
     }
 
     private static bool IsUnsafe(string? method) =>

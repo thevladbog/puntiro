@@ -4,7 +4,9 @@ using System.Data.Common;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -17,6 +19,7 @@ using Puntiro.IntegrationTests.Identity;
 using Puntiro.IntegrationTests.Infrastructure;
 using Puntiro.Modules.Identity.Contracts;
 using Puntiro.Modules.Identity.Persistence;
+using Puntiro.Modules.Integrations.Contracts;
 using Puntiro.Modules.Integrations.Persistence;
 using Puntiro.Modules.Tenancy.Contracts;
 using Puntiro.Modules.Tenancy.Persistence;
@@ -70,13 +73,20 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
     internal ProductionCloudWebApplicationFactory CreateProductionFactory(
         IInterceptor? identityInterceptor = null,
         bool includeRetainedIntegrationKey = true,
-        IInterceptor? integrationInterceptor = null) =>
+        IInterceptor? integrationInterceptor = null,
+        bool includeIntegrationTestProbes = false,
+        IntegrationAuthenticationCallCounter? integrationAuthenticationCalls = null) =>
         new(
             Settings(includeRetainedIntegrationKey),
             Time,
             _logs,
             identityInterceptor,
-            integrationInterceptor);
+            integrationInterceptor,
+            includeIntegrationTestProbes,
+            integrationAuthenticationCalls);
+
+    internal BaseTestingCloudWebApplicationFactory CreateBaseTestingFactory() =>
+        new(Settings(includeRetainedIntegrationKey: true), Time, _logs);
 
     public string CurrentTotp() => IdentityTotp.Generate(
         _totpSecret,
@@ -95,7 +105,13 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         Directory.CreateDirectory(keyPath);
         var certificatePath = Path.Combine(_temporaryRoot, "key-protection.pfx");
         CreateCertificate(certificatePath, _certificatePassword);
-        ConfigureHost(builder, "Testing", Settings(includeRetainedIntegrationKey: true), Time, _logs);
+        ConfigureHost(
+            builder,
+            "Testing",
+            Settings(includeRetainedIntegrationKey: true),
+            Time,
+            _logs,
+            includeIntegrationTestProbes: true);
     }
 
     internal static WebApplicationFactoryClientOptions SecureClientOptions() => new()
@@ -122,7 +138,9 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         TimeProvider time,
         ILoggerProvider logs,
         IInterceptor? identityInterceptor = null,
-        IInterceptor? integrationInterceptor = null)
+        IInterceptor? integrationInterceptor = null,
+        bool includeIntegrationTestProbes = false,
+        IntegrationAuthenticationCallCounter? integrationAuthenticationCalls = null)
     {
         builder.UseEnvironment(environment);
         var values = new Dictionary<string, string>
@@ -167,7 +185,43 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
                 services.AddDbContext<IntegrationsDbContext>(options =>
                     options.AddInterceptors(integrationInterceptor));
             }
+
+            if (includeIntegrationTestProbes)
+            {
+                services.AddSingleton<IStartupFilter, IntegrationTestProbeStartupFilter>();
+            }
+
+            if (integrationAuthenticationCalls is not null)
+            {
+                var original = services.Last(descriptor =>
+                    descriptor.ServiceType == typeof(IIntegrationTokenService));
+                services.Remove(original);
+                services.AddScoped<IIntegrationTokenService>(provider =>
+                    new CountingIntegrationTokenService(
+                        CreateIntegrationTokenService(provider, original),
+                        integrationAuthenticationCalls));
+            }
         });
+    }
+
+    private static IIntegrationTokenService CreateIntegrationTokenService(
+        IServiceProvider provider,
+        ServiceDescriptor descriptor)
+    {
+        if (descriptor.ImplementationFactory is not null)
+        {
+            return (IIntegrationTokenService)descriptor.ImplementationFactory(provider);
+        }
+
+        if (descriptor.ImplementationInstance is IIntegrationTokenService instance)
+        {
+            return instance;
+        }
+
+        return (IIntegrationTokenService)ActivatorUtilities.CreateInstance(
+            provider,
+            descriptor.ImplementationType ?? throw new InvalidOperationException(
+                "Integration token service registration has no implementation."));
     }
 
     public async ValueTask InitializeAsync()
@@ -283,7 +337,9 @@ internal sealed class ProductionCloudWebApplicationFactory(
     TimeProvider time,
     ILoggerProvider logs,
     IInterceptor? identityInterceptor,
-    IInterceptor? integrationInterceptor)
+    IInterceptor? integrationInterceptor,
+    bool includeIntegrationTestProbes,
+    IntegrationAuthenticationCallCounter? integrationAuthenticationCalls)
     : WebApplicationFactory<cloud::Program>
 {
     public HttpClient CreateSecureClient()
@@ -301,7 +357,106 @@ internal sealed class ProductionCloudWebApplicationFactory(
             time,
             logs,
             identityInterceptor,
-            integrationInterceptor);
+            integrationInterceptor,
+            includeIntegrationTestProbes,
+            integrationAuthenticationCalls);
+}
+
+internal sealed class BaseTestingCloudWebApplicationFactory(
+    CloudHostSettings settings,
+    TimeProvider time,
+    ILoggerProvider logs)
+    : WebApplicationFactory<cloud::Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+        CloudWebApplicationFactory.ConfigureHost(
+            builder,
+            "Testing",
+            settings,
+            time,
+            logs);
+}
+
+internal sealed class IntegrationTestProbeStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.UseWhen(
+            context => context.Request.Path.StartsWithSegments(
+                "/api/v1/test",
+                StringComparison.Ordinal),
+            branch =>
+            {
+                branch.UseRouting();
+                branch.UseAuthentication();
+                branch.UseAuthorization();
+                branch.UseEndpoints(endpoints =>
+                {
+                    endpoints.MapGet(
+                            "/api/v1/test/shipments/read",
+                            (cloud::Puntiro.Cloud.Http.TenantContext tenant) =>
+                                tenant.IsEstablished && tenant.IsIntegration
+                                    ? Results.Ok(new
+                                    {
+                                        tokenId = tenant.IntegrationTokenId,
+                                        organizationId = tenant.OrganizationId
+                                    })
+                                    : Results.Unauthorized())
+                        .WithName("IntegrationShipmentsReadProbe")
+                        .WithTags("Integration Test Probe")
+                        .RequireAuthorization("integration.shipments.read");
+                    endpoints.MapPost(
+                            "/api/v1/test/shipments/write",
+                            () => Results.NoContent())
+                        .WithName("IntegrationShipmentsWriteProbe")
+                        .WithTags("Integration Test Probe")
+                        .RequireAuthorization("integration.shipments.write");
+                });
+            });
+        next(app);
+    };
+}
+
+internal sealed class IntegrationAuthenticationCallCounter
+{
+    private int _count;
+
+    internal int Count => Volatile.Read(ref _count);
+
+    internal void Increment() => Interlocked.Increment(ref _count);
+}
+
+internal sealed class CountingIntegrationTokenService(
+    IIntegrationTokenService inner,
+    IntegrationAuthenticationCallCounter calls) : IIntegrationTokenService
+{
+    public Task<IssuedIntegrationToken> CreateAsync(
+        CreateIntegrationToken command,
+        CancellationToken cancellationToken) => inner.CreateAsync(command, cancellationToken);
+
+    public Task<IReadOnlyList<IntegrationTokenMetadata>> ListAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken) => inner.ListAsync(organizationId, cancellationToken);
+
+    public Task RevokeAsync(
+        Guid organizationId,
+        Guid tokenId,
+        Guid revokedByUserId,
+        long expectedVersion,
+        CancellationToken cancellationToken) => inner.RevokeAsync(
+            organizationId,
+            tokenId,
+            revokedByUserId,
+            expectedVersion,
+            cancellationToken);
+
+    public Task<IntegrationPrincipal?> AuthenticateAsync(
+        string presentedToken,
+        CancellationToken cancellationToken)
+    {
+        calls.Increment();
+        return inner.AuthenticateAsync(presentedToken, cancellationToken);
+    }
 }
 
 internal sealed class FailFirstIdentitySecurityEventCommandInterceptor : DbCommandInterceptor

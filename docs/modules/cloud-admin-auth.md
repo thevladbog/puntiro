@@ -31,6 +31,11 @@ inclusive five-minute window; recovery login alone is insufficient. The raw inte
 is serialized once by its owning response result and disposed immediately after that response
 boundary. List and revoke expose metadata only.
 
+List/create/revoke share a fixed 120-per-minute direct-peer-IP limit. It is independent from login
+and step-up partitions, ignores forwarded headers, and returns `429 auth.rate_limited` with a
+deterministic `Retry-After`. OpenAPI describes both manually parsed request bodies, exact success
+schemas/statuses, and stable `application/problem+json` codes without credential examples/defaults.
+
 ## Limits and errors
 
 Auth JSON and aggregate request headers are bounded before credential work. Unknown fields and malformed JSON are rejected. Login is limited simultaneously by the direct connection IP and a process-random keyed hash of the normalized email partition; raw email is not a limiter key. Forwarded client-IP headers are not trusted by this host stage. Step-up is limited per verified server session. Partitions have a fixed upper bound, and `429` includes deterministic `Retry-After`.
