@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPuntiroCloud(builder.Configuration, builder.Environment);
 var app = builder.Build();
 
+app.UsePuntiroForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages(async statusContext =>
 {

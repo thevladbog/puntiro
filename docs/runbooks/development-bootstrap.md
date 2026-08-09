@@ -5,6 +5,7 @@
 - Node.js 24.19.0
 - Corepack with pnpm 11.17.0, as pinned by the repository
 - .NET SDK 10.0.302
+- Docker with Compose for the pinned local PostgreSQL 17.10 service
 - Local Chromium installed by Playwright for browser validation
 
 ## Commands
@@ -22,6 +23,11 @@ corepack pnpm docs:check
 corepack pnpm foundation:check
 corepack pnpm check:dotnet
 corepack pnpm check:foundation
+corepack pnpm test:cloud:contracts
+dotnet tool restore
+dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
+dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
+node scripts/check-cloud-security.mjs
 corepack pnpm check
 ```
 
@@ -34,5 +40,7 @@ For every individual build, the command evaluates `MSBuildProjectFullPath`, `Ass
 The declaration's source location is deliberately not part of this policy. `Properties/AssemblyInfo.cs` is the preferred review convention, but equivalent relocated or MSBuild-generated declarations are accepted when the final metadata is exact. Normal `bin` or `obj` files and same-named DLLs from another project are never searched or read. The successful build's exact project-scoped regular-file `TargetPath` is authoritative even when an MSBuild target explicitly replaces it with another regular file whose final assembly identity and allowlist are exact. This gate does not establish compiler/artifact provenance or build-supply-chain integrity; those require signed/reproducible-build controls in a future stage. Missing or duplicate inputs, identity mismatches, escaped paths, stale-only outputs, and missing, duplicate, or unapproved friends fail with diagnostics referencing `AGENTS.md#internal-access-policy`; all temporary artifacts are removed on success or failure.
 
 `check:foundation` is the aggregate repository-foundation gate and includes both the fast and definitive layers. `check` runs the existing design-system validation pipeline; these commands are automated evidence only and do not replace Windows or physical-hardware acceptance.
+
+`test:cloud:contracts` runs secret-free repository mutation tests and requires no PostgreSQL. The integration-test command requires a secret `PUNTIRO_TEST_POSTGRES` maintenance connection to real PostgreSQL 17.10 and fails rather than skipping when it is absent. Use the ignored local configuration and explicit migration/provisioning order in [Cloud development and deployment operations](cloud-development.md). Production Cloud never applies migrations at startup.
 
 The repository-level `.npmrc` fixes dependency resolution to the public npm registry. Keep `pnpm-lock.yaml` free of machine-specific registry URLs so the same frozen lockfile is verifiable locally and on GitHub Actions.

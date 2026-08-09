@@ -9,6 +9,7 @@ This repository contains the design-system, repository foundation, and the first
 - Node.js 24.19.0
 - .NET SDK 10.0.302
 - pnpm 11.17.0 through Corepack
+- Docker with Compose for local PostgreSQL 17.10
 - Local Chromium installed by Playwright
 
 ## Getting started
@@ -33,7 +34,14 @@ pnpm storybook:build
 pnpm test:visual
 pnpm check
 corepack pnpm check:foundation
+corepack pnpm test:cloud:contracts
+dotnet tool restore
+dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
+dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
+node scripts/check-cloud-security.mjs
 ```
+
+The integration suite requires a real PostgreSQL 17.10 maintenance connection in the secret `PUNTIRO_TEST_POSTGRES` variable. Follow [Cloud development and deployment operations](docs/runbooks/cloud-development.md); the suite never falls back to SQLite or an in-memory provider. Production migrations remain explicit deployment operations, not application startup behavior.
 
 `pnpm check` always runs the same local pipeline in this order:
 

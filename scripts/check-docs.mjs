@@ -8,8 +8,19 @@ const requiredFiles = [
   'docs/README.md',
   'docs/adr/0001-modular-monolith-agent.md',
   'docs/adr/0002-effective-friend-metadata-enforcement.md',
+  'docs/adr/0002-global-identity-and-credentials.md',
   'docs/engineering/foundation-validation.md',
+  'docs/engineering/cloud-identity-validation.md',
+  'docs/modules/identity.md',
+  'docs/modules/tenancy.md',
+  'docs/modules/integrations.md',
   'docs/runbooks/development-bootstrap.md',
+  'docs/runbooks/cloud-development.md',
+  'docs/runbooks/first-owner-provisioning.md',
+  'docs/runbooks/owner-totp-recovery.md',
+  'docs/runbooks/integration-token-rotation.md',
+  'docs/reference/cloud-configuration.md',
+  'docs/reference/cloud-authentication-api.md',
   'docs/superpowers/specs/2026-08-08-puntiro-technical-architecture-design.md'
 ];
 
@@ -22,6 +33,21 @@ const agentsHeadings = [
   '## Validation Boundaries',
   '## Secrets and Logs',
   '## Git Safety'
+];
+
+const docsMapLinks = [
+  'engineering/foundation-validation.md',
+  'engineering/cloud-identity-validation.md',
+  'adr/0002-global-identity-and-credentials.md',
+  'modules/identity.md',
+  'modules/tenancy.md',
+  'modules/integrations.md',
+  'runbooks/cloud-development.md',
+  'runbooks/first-owner-provisioning.md',
+  'runbooks/owner-totp-recovery.md',
+  'runbooks/integration-token-rotation.md',
+  'reference/cloud-configuration.md',
+  'reference/cloud-authentication-api.md',
 ];
 
 export async function validateRepositoryDocs(rootUrl) {
@@ -47,8 +73,11 @@ export async function validateRepositoryDocs(rootUrl) {
 
   try {
     const docsMap = await readFile(path.join(root, 'docs/README.md'), 'utf8');
-    if (!/\]\(engineering\/foundation-validation\.md(?:#[^)]+)?\)/.test(docsMap)) {
-      errors.push('docs/README.md must link engineering/foundation-validation.md');
+    for (const relativePath of docsMapLinks) {
+      const escaped = relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!new RegExp(`\\]\\(${escaped}(?:#[^)]+)?\\)`).test(docsMap)) {
+        errors.push(`docs/README.md must link ${relativePath}`);
+      }
     }
   } catch {
     // Missing-file diagnostic is already emitted above.

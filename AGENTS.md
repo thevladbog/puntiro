@@ -19,7 +19,19 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 - Foundation boundaries: `corepack pnpm foundation:check`
 - Foundation aggregate: `corepack pnpm check:foundation`
 - .NET solution: `dotnet build Puntiro.slnx --configuration Release`
+- .NET tools: `dotnet tool restore`
+- Cloud unit tests: `dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release`
+- Cloud PostgreSQL tests: `dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release`
+- Cloud security contracts: `node scripts/check-cloud-security.mjs`
 - Existing UI pipeline: `corepack pnpm check`
+
+## Cloud Deployment Safety
+
+- Production Cloud never calls `Migrate`, `MigrateAsync`, `EnsureCreated`, or `EnsureCreatedAsync`; apply reviewed module migrations explicitly before starting the host.
+- Pin local and CI PostgreSQL to `postgres:17.10-bookworm`. Persist database data, the Data Protection key ring, its protection certificate custody, and every retained HMAC version as distinct recovery concerns.
+- Forwarded headers are disabled unless the exact immediate proxy IP/network allowlist is configured. Keep one symmetric hop, never enable `ASPNETCORE_FORWARDEDHEADERS_ENABLED`, and test Timeweb after every topology change.
+- `/health/live` proves process liveness only. Traffic is allowed only after `/health/ready` confirms PostgreSQL, migrations, Data Protection, and current/historical HMAC requirements.
+- Roll back application code with expand/contract-compatible schema and retained keys. Never automate a destructive EF down-migration against production data.
 
 ## Dependency Policy
 

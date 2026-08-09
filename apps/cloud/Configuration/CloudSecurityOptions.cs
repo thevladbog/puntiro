@@ -7,12 +7,20 @@ public sealed class PuntiroCloudOptions
     public const string SectionName = "Puntiro";
 
     public CloudAdminOptions Admin { get; init; } = new();
+    public CloudProxyOptions Proxy { get; init; } = new();
     public CloudSecurityOptions Security { get; init; } = new();
 }
 
 public sealed class CloudAdminOptions
 {
     public string AllowedOrigin { get; init; } = string.Empty;
+}
+
+public sealed class CloudProxyOptions
+{
+    public bool Enabled { get; init; }
+    public string[] KnownProxies { get; init; } = [];
+    public string[] KnownNetworks { get; init; } = [];
 }
 
 public sealed class CloudSecurityOptions

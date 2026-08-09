@@ -31,14 +31,15 @@ inclusive five-minute window; recovery login alone is insufficient. The raw inte
 is serialized once by its owning response result and disposed immediately after that response
 boundary. List and revoke expose metadata only.
 
-List/create/revoke share a fixed 120-per-minute direct-peer-IP limit. It is independent from login
-and step-up partitions, ignores forwarded headers, and returns `429 auth.rate_limited` with a
-deterministic `Retry-After`. OpenAPI describes both manually parsed request bodies, exact success
+List/create/revoke share a fixed 120-per-minute accepted-client-IP limit. It is independent from
+login and step-up partitions. Forwarded addresses are used only when one symmetric hop arrives
+from the configured immediate proxy/network allowlist; headers from any unknown peer are ignored.
+Exhaustion returns `429 auth.rate_limited` with a deterministic `Retry-After`. OpenAPI describes both manually parsed request bodies, exact success
 schemas/statuses, and stable `application/problem+json` codes without credential examples/defaults.
 
 ## Limits and errors
 
-Auth JSON and aggregate request headers are bounded before credential work. Unknown fields and malformed JSON are rejected. Login is limited simultaneously by the direct connection IP and a process-random keyed hash of the normalized email partition; raw email is not a limiter key. Forwarded client-IP headers are not trusted by this host stage. Step-up is limited per verified server session. Partitions have a fixed upper bound, and `429` includes deterministic `Retry-After`.
+Auth JSON and aggregate request headers are bounded before credential work. Unknown fields and malformed JSON are rejected. Login is limited simultaneously by the accepted client IP and a process-random keyed hash of the normalized email partition; raw email is not a limiter key. Without an enabled proxy boundary the accepted address is the direct connection peer. Step-up is limited per verified server session. Partitions have a fixed upper bound, and `429` includes deterministic `Retry-After`.
 
 Errors use `application/problem+json` with a stable `code` and opaque `traceId`. This includes bounded route-not-found and method-not-allowed fallbacks; routing headers such as `Allow` are preserved. Public responses never contain stack traces, provider messages, hashes, credentials, or foreign-tenant identifiers. Request-body logging is not enabled for authentication routes.
 
@@ -55,6 +56,11 @@ transactions. Stable identifiers and durable commit checks prevent duplicate tok
 usage replay remains within the 15-minute coalescing rule. The dedicated external Bearer scheme
 rechecks token revocation and active organization state per request, applies exact scope policies,
 and never falls back to the Admin cookie or Admin antiforgery boundary.
+
+Forwarded headers are disabled by default. Production may enable them only with at least one exact
+`Puntiro:Proxy:KnownProxies` address or `KnownNetworks` CIDR. Processing is limited to one symmetric
+`X-Forwarded-For`/`X-Forwarded-Proto` hop before authentication and rate limiting. The unrestricted
+`ASPNETCORE_FORWARDEDHEADERS_ENABLED` platform shortcut is rejected at startup.
 
 For a real PostgreSQL 17.10 test database whose principal may create and drop disposable databases:
 

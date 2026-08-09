@@ -5,21 +5,22 @@ import path from 'node:path';
 const approvedActions = new Map([
   ['actions/checkout', {
     sha: '3d3c42e5aac5ba805825da76410c181273ba90b1',
-    count: 2,
+    count: 3,
   }],
   ['actions/setup-node', {
     sha: '820762786026740c76f36085b0efc47a31fe5020',
-    count: 2,
+    count: 3,
   }],
   ['actions/setup-dotnet', {
     sha: 'a98b56852c35b8e3190ac28c8c2271da59106c68',
-    count: 2,
+    count: 3,
   }],
 ]);
 
 const expectedAuditCommand = 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive';
 const expectedDotnetCommand = 'node scripts/check-dotnet.mjs';
-const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
+const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm test:cloud:contracts && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
+const expectedCloudContractsCommand = 'node --test scripts/check-cloud-security.test.mjs';
 
 async function workflowFiles(root) {
   const workflowDirectory = path.join(root, '.github', 'workflows');
@@ -76,6 +77,7 @@ function validateFoundationWorkflow(content) {
   const errors = [];
   const repositoryJob = jobBlock(content, 'repository-contracts');
   const windowsJob = jobBlock(content, 'windows-build');
+  const cloudJob = jobBlock(content, 'cloud-identity');
 
   if (!repositoryJob) {
     errors.push('foundation workflow must define repository-contracts job');
@@ -100,6 +102,33 @@ function validateFoundationWorkflow(content) {
     requireJobCommands(errors, 'windows-build', windowsJob, [
       'node scripts/check-dotnet.mjs',
     ]);
+  }
+
+  if (!cloudJob) {
+    errors.push('foundation workflow must define cloud-identity job');
+  } else {
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'name: Cloud identity and PostgreSQL');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'runs-on: ubuntu-latest');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'image: postgres:17.10-bookworm');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'node-version: 24.19.0');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'dotnet-version: 10.0.302');
+    if (!cloudJob.includes('PUNTIRO_TEST_POSTGRES:')) {
+      errors.push('cloud-identity job must set PUNTIRO_TEST_POSTGRES only in its job environment');
+    }
+    if (!cloudJob.includes('pg_isready')) {
+      errors.push('cloud-identity job must wait for PostgreSQL health');
+    }
+    requireJobCommands(errors, 'cloud-identity', cloudJob, [
+      'dotnet tool restore',
+      'dotnet restore Puntiro.slnx --locked-mode',
+      'dotnet build Puntiro.slnx --configuration Release --no-restore',
+      'dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build',
+      'dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build',
+      'node scripts/check-cloud-security.mjs',
+    ]);
+    if (/\brun:\s*.*(?:echo|printenv).*PUNTIRO_TEST_POSTGRES/i.test(cloudJob)) {
+      errors.push('cloud-identity job must not print PUNTIRO_TEST_POSTGRES');
+    }
   }
 
   return errors;
@@ -166,6 +195,9 @@ export async function validateCiContract(rootUrl) {
     }
     if (manifest.scripts?.['check:foundation'] !== expectedFoundationCommand) {
       errors.push('package.json check:foundation does not match the approved aggregate command');
+    }
+    if (manifest.scripts?.['test:cloud:contracts'] !== expectedCloudContractsCommand) {
+      errors.push('package.json test:cloud:contracts must run the cloud security mutation suite');
     }
   } catch {
     errors.push('Missing or invalid package.json for CI contract');

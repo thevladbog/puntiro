@@ -1,0 +1,58 @@
+name: puntiro-cloud-development
+
+services:
+  postgres:
+    image: postgres:17.10-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in infra/compose/.env.cloud}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in infra/compose/.env.cloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/compose/.env.cloud}
+    ports:
+      - "127.0.0.1:${PUNTIRO_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    volumes:
+      - puntiro-cloud-postgres:/var/lib/postgresql/data
+
+  cloud:
+    profiles: ["cloud-runtime"]
+    image: ${PUNTIRO_CLOUD_IMAGE:-puntiro-cloud:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:mode=1777
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Puntiro: ${ConnectionStrings__Puntiro}
+      Puntiro__Admin__AllowedOrigin: ${Puntiro__Admin__AllowedOrigin}
+      Puntiro__Proxy__Enabled: ${Puntiro__Proxy__Enabled:-false}
+      Puntiro__Proxy__KnownProxies__0: ${Puntiro__Proxy__KnownProxies__0}
+      Puntiro__Proxy__KnownNetworks__0: ${Puntiro__Proxy__KnownNetworks__0}
+      Puntiro__Security__DataProtectionKeysPath: /var/lib/puntiro/data-protection-keys
+      Puntiro__Security__DataProtectionCertificatePath: /run/puntiro-secrets/data-protection.pfx
+      Puntiro__Security__DataProtectionCertificatePassword: ${Puntiro__Security__DataProtectionCertificatePassword}
+      Puntiro__Security__SessionHmac__CurrentVersion: ${Puntiro__Security__SessionHmac__CurrentVersion}
+      Puntiro__Security__SessionHmac__Keys__v1: ${Puntiro__Security__SessionHmac__Keys__v1}
+      Puntiro__Security__RecoveryHmac__CurrentVersion: ${Puntiro__Security__RecoveryHmac__CurrentVersion}
+      Puntiro__Security__RecoveryHmac__Keys__v1: ${Puntiro__Security__RecoveryHmac__Keys__v1}
+      Puntiro__Security__IntegrationHmac__CurrentVersion: ${Puntiro__Security__IntegrationHmac__CurrentVersion}
+      Puntiro__Security__IntegrationHmac__Keys__v1: ${Puntiro__Security__IntegrationHmac__Keys__v1}
+    volumes:
+      - puntiro-cloud-data-protection-keys:/var/lib/puntiro/data-protection-keys
+      - ${Puntiro__Security__DataProtectionCertificateHostPath:-./cloud-secrets/data-protection.pfx}:/run/puntiro-secrets/data-protection.pfx:ro
+
+volumes:
+  puntiro-cloud-postgres:
+  puntiro-cloud-data-protection-keys:

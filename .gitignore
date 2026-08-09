@@ -6,6 +6,9 @@ storybook-static/
 playwright-report/
 test-results/
 coverage/
+infra/compose/.env.cloud
+infra/compose/cloud-secrets/
+infra/compose/cloud-data-protection-keys/
 *.tsbuildinfo
 **/bin/
 **/obj/

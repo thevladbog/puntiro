@@ -1,6 +1,7 @@
 extern alias cloud;
 
 using System.Data.Common;
+using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.DataProtection;
@@ -75,7 +76,8 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         bool includeRetainedIntegrationKey = true,
         IInterceptor? integrationInterceptor = null,
         bool includeIntegrationTestProbes = false,
-        IntegrationAuthenticationCallCounter? integrationAuthenticationCalls = null) =>
+        IntegrationAuthenticationCallCounter? integrationAuthenticationCalls = null,
+        ProxyTestSettings? proxy = null) =>
         new(
             Settings(includeRetainedIntegrationKey),
             Time,
@@ -83,7 +85,8 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
             identityInterceptor,
             integrationInterceptor,
             includeIntegrationTestProbes,
-            integrationAuthenticationCalls);
+            integrationAuthenticationCalls,
+            proxy);
 
     internal BaseTestingCloudWebApplicationFactory CreateBaseTestingFactory() =>
         new(Settings(includeRetainedIntegrationKey: true), Time, _logs);
@@ -140,7 +143,8 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         IInterceptor? identityInterceptor = null,
         IInterceptor? integrationInterceptor = null,
         bool includeIntegrationTestProbes = false,
-        IntegrationAuthenticationCallCounter? integrationAuthenticationCalls = null)
+        IntegrationAuthenticationCallCounter? integrationAuthenticationCalls = null,
+        ProxyTestSettings? proxy = null)
     {
         builder.UseEnvironment(environment);
         var values = new Dictionary<string, string>
@@ -164,6 +168,23 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         {
             values["Puntiro:Security:IntegrationHmac:Keys:v0"] = settings.RetainedIntegrationKey;
         }
+        if (proxy is not null)
+        {
+            values["Puntiro:Proxy:Enabled"] = "true";
+            if (proxy.EnablePlatformShortcut)
+            {
+                values["ASPNETCORE_FORWARDEDHEADERS_ENABLED"] = "true";
+            }
+            for (var index = 0; index < proxy.KnownProxies.Count; index++)
+            {
+                values[$"Puntiro:Proxy:KnownProxies:{index}"] = proxy.KnownProxies[index];
+            }
+
+            for (var index = 0; index < proxy.KnownNetworks.Count; index++)
+            {
+                values[$"Puntiro:Proxy:KnownNetworks:{index}"] = proxy.KnownNetworks[index];
+            }
+        }
 
         foreach (var setting in values)
         {
@@ -174,6 +195,11 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
             services.RemoveAll<TimeProvider>();
             services.AddSingleton(time);
             services.AddLogging(logging => logging.AddProvider(logs));
+            if (proxy is not null)
+            {
+                services.AddSingleton<IStartupFilter>(
+                    new ConfiguredRemotePeerStartupFilter(proxy.RemotePeer));
+            }
             if (identityInterceptor is not null)
             {
                 services.AddDbContext<IdentityDbContext>(options =>
@@ -339,7 +365,8 @@ internal sealed class ProductionCloudWebApplicationFactory(
     IInterceptor? identityInterceptor,
     IInterceptor? integrationInterceptor,
     bool includeIntegrationTestProbes,
-    IntegrationAuthenticationCallCounter? integrationAuthenticationCalls)
+    IntegrationAuthenticationCallCounter? integrationAuthenticationCalls,
+    ProxyTestSettings? proxy)
     : WebApplicationFactory<cloud::Program>
 {
     public HttpClient CreateSecureClient()
@@ -359,7 +386,8 @@ internal sealed class ProductionCloudWebApplicationFactory(
             identityInterceptor,
             integrationInterceptor,
             includeIntegrationTestProbes,
-            integrationAuthenticationCalls);
+            integrationAuthenticationCalls,
+            proxy);
 }
 
 internal sealed class BaseTestingCloudWebApplicationFactory(
@@ -413,6 +441,25 @@ internal sealed class IntegrationTestProbeStartupFilter : IStartupFilter
                         .RequireAuthorization("integration.shipments.write");
                 });
             });
+        next(app);
+    };
+}
+
+internal sealed record ProxyTestSettings(
+    IPAddress RemotePeer,
+    IReadOnlyList<string> KnownProxies,
+    IReadOnlyList<string> KnownNetworks,
+    bool EnablePlatformShortcut = false);
+
+internal sealed class ConfiguredRemotePeerStartupFilter(IPAddress remotePeer) : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, continuation) =>
+        {
+            context.Connection.RemoteIpAddress = remotePeer;
+            return continuation();
+        });
         next(app);
     };
 }

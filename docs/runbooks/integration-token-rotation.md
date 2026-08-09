@@ -28,8 +28,9 @@ recovered after their one-time create response.
 4. Send the external system's normal request and verify the expected successful business response.
    A generic `401` does not distinguish malformed, unknown, revoked, wrong-secret, missing-key, or
    inactive-organization states. A `403` means the verified token lacks the exact required scope. A
-   `429` includes `Retry-After`: the direct peer may have exhausted the aggregate pre-authentication
-   budget, or that verified token/direct-peer pair may have exhausted its second budget.
+   `429` includes `Retry-After`: the accepted client address may have exhausted the aggregate
+   pre-authentication budget, or that verified token/client-address pair may have exhausted its
+   second budget.
 5. Re-list the metadata and confirm the replacement's `lastUsedAt` is populated. Use the latest old
    token `version`, then call `POST /api/admin/integration-tokens/{old-id}/revoke` with the normal
    Admin `Origin` and antiforgery header. A version conflict requires a fresh list and deliberate
@@ -47,10 +48,10 @@ recovered after their one-time create response.
   versions. A third token is rejected with `integration_token.active_limit`.
 - Treat a missing historical HMAC key, lost one-time credential, or unexplained token use as an
   incident. Never place a raw token, verifier, key, or request body in diagnostics.
-- The pre-authentication budget is 120 attempts per minute per direct peer. Different external
-  systems behind one NAT address share it, so one noisy client can temporarily limit its neighbors.
-  Do not trust or add forwarded client-IP headers as a workaround; establish the Timeweb trusted
-  proxy boundary first.
+- The pre-authentication budget is 120 attempts per minute per accepted client address. Different
+  external systems behind one NAT address share it, so one noisy client can temporarily limit its
+  neighbors. Forwarded addresses count only through the reviewed single-hop Timeweb allowlist;
+  spoofed headers from any other direct peer are ignored.
 
 This procedure requires deployed external-system acceptance. Automated Cloud tests prove API,
 authorization, replay, and PostgreSQL behavior only; they do not prove the external system or

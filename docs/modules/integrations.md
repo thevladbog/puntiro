@@ -93,7 +93,7 @@ Active owners manage safe metadata at `GET /api/admin/integration-tokens`, issue
 `POST /api/admin/integration-tokens`, and revoke at
 `POST /api/admin/integration-tokens/{id}/revoke`. Unsafe Admin calls require the exact configured
 Origin and `X-Puntiro-CSRF`; create additionally requires a TOTP-backed session freshness timestamp
-not older than five minutes. All three routes share a fixed 120-per-minute direct-peer-IP Admin
+not older than five minutes. All three routes share a fixed 120-per-minute accepted-client-IP Admin
 limit and return `429 auth.rate_limited` with `Retry-After` when it is exhausted. The raw bearer
 appears only in a successful `201` create response.
 
@@ -103,14 +103,15 @@ Integration use cases use the dedicated `IntegrationToken` Bearer scheme and the
 The organization and scopes come only from the verified durable token, and active organization plus
 revocation state are checked for every request. Successful scope authorization establishes the
 request-scoped tenant context from that token ID and organization, never from request input. A fixed
-one-minute pre-authentication gate permits 120 total integration attempts per direct peer and is
+one-minute pre-authentication gate permits 120 total integration attempts per accepted client and is
 reserved atomically before credential parsing or database authentication. Once exhausted, later
 requests return `429` without calling the token service or PostgreSQL. Malformed and unknown values
 consume only this gate. A successfully verified token additionally consumes a separate 120-request
-public-ID/direct-peer-IP partition. This deliberate double gate bounds database work, but it also
+public-ID/accepted-client-IP partition. This deliberate double gate bounds database work, but it also
 means clients sharing one NAT peer share the aggregate 120-request pre-authentication budget even
-when they use different valid tokens. Forwarded IP headers are deliberately ignored until deployment
-defines and tests a trusted proxy boundary.
+when they use different valid tokens. Forwarded IP headers affect these partitions only when Cloud
+enables its single-hop boundary with an explicit immediate proxy/network allowlist. Unknown peers
+cannot change the client address.
 
 OpenAPI declares the manually parsed create/revoke JSON bodies, exact metadata/issued success
 schemas, no-content revoke, and every stable Admin or integration problem code. Raw credential

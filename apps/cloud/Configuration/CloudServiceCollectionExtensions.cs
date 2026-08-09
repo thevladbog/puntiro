@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Json;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Puntiro.Cloud.Auth;
@@ -44,13 +45,21 @@ public static class CloudServiceCollectionExtensions
 
         var options = configuration.GetSection(PuntiroCloudOptions.SectionName)
             .Get<PuntiroCloudOptions>() ?? new PuntiroCloudOptions();
-        Validate(options);
+        if (!Validate(options) ||
+            string.Equals(
+                configuration["ASPNETCORE_FORWARDEDHEADERS_ENABLED"],
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Puntiro Cloud security configuration is invalid.");
+        }
         services.AddOptions<PuntiroCloudOptions>()
             .Bind(configuration.GetSection(PuntiroCloudOptions.SectionName))
             .Validate(Validate, "Puntiro Cloud security configuration is invalid.")
             .ValidateOnStart();
         services.AddSingleton(options);
         services.AddSingleton(TimeProvider.System);
+        ConfigureForwardedHeaders(services, options.Proxy);
 
         var sessionKeys = options.Security.SessionHmac.Decode("session HMAC");
         var recoveryKeys = options.Security.RecoveryHmac.Decode("recovery HMAC");
@@ -156,6 +165,36 @@ public static class CloudServiceCollectionExtensions
     public static IApplicationBuilder UsePuntiroAdminCsrf(this IApplicationBuilder app) =>
         app.UseMiddleware<AdminCsrfMiddleware>();
 
+    public static IApplicationBuilder UsePuntiroForwardedHeaders(this IApplicationBuilder app)
+    {
+        var options = app.ApplicationServices.GetRequiredService<PuntiroCloudOptions>();
+        return options.Proxy.Enabled ? app.UseForwardedHeaders() : app;
+    }
+
+    private static void ConfigureForwardedHeaders(
+        IServiceCollection services,
+        CloudProxyOptions proxy)
+    {
+        services.Configure<ForwardedHeadersOptions>(forwarded =>
+        {
+            forwarded.ForwardedHeaders =
+                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            forwarded.ForwardLimit = 1;
+            forwarded.RequireHeaderSymmetry = true;
+            forwarded.KnownProxies.Clear();
+            forwarded.KnownIPNetworks.Clear();
+            foreach (var value in proxy.KnownProxies)
+            {
+                forwarded.KnownProxies.Add(IPAddress.Parse(value));
+            }
+
+            foreach (var value in proxy.KnownNetworks)
+            {
+                forwarded.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(value));
+            }
+        });
+    }
+
     private static void ConfigureDatabaseRetries(
         IServiceCollection services,
         string connectionString,
@@ -205,7 +244,8 @@ public static class CloudServiceCollectionExtensions
             options.Security.RateLimitWindowSeconds is < 1 or > 3600 ||
             options.Security.MaximumRateLimitPartitions is < 100 or > 1_000_000 ||
             options.Security.MaximumRequestBodyBytes is < 1024 or > 1_048_576 ||
-            options.Security.MaximumHeaderBytes is < 4096 or > 1_048_576)
+            options.Security.MaximumHeaderBytes is < 4096 or > 1_048_576 ||
+            !ValidProxyBoundary(options.Proxy))
         {
             return false;
         }
@@ -229,6 +269,25 @@ public static class CloudServiceCollectionExtensions
         {
             return false;
         }
+    }
+
+    private static bool ValidProxyBoundary(CloudProxyOptions proxy)
+    {
+        if (!proxy.Enabled)
+        {
+            return proxy.KnownProxies.Length == 0 && proxy.KnownNetworks.Length == 0;
+        }
+
+        if (proxy.KnownProxies.Length + proxy.KnownNetworks.Length == 0 ||
+            proxy.KnownProxies.Length + proxy.KnownNetworks.Length > 64)
+        {
+            return false;
+        }
+
+        return proxy.KnownProxies.All(static value =>
+                   IPAddress.TryParse(value, out _)) &&
+            proxy.KnownNetworks.All(static value =>
+                System.Net.IPNetwork.TryParse(value, out _));
     }
 
     private static void EnsureIndependentKeys(params IReadOnlyDictionary<string, byte[]>[] sets)
