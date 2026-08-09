@@ -13,7 +13,7 @@
 
 ## CI
 
-- Windows compile: pending CI until the workflow runs
+- Windows compile: the first hosted run exposed short-name normalization of the OS temporary directory; canonical-root regression and local definitive check pass, hosted rerun pending
 
 ## Manual
 

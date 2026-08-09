@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { after, before, test } from 'node:test';
 import os from 'node:os';
@@ -148,6 +148,35 @@ before(async () => {
 
 after(async () => {
   if (testRoot) await rm(testRoot, { force: true, recursive: true });
+});
+
+test('canonicalizes a trusted OS temporary alias before deriving isolated artifact paths', async t => {
+  const actualParent = path.join(testRoot, 'canonical-temp-parent');
+  const aliasParent = path.join(testRoot, 'canonical-temp-alias');
+  await mkdir(actualParent, { recursive: true });
+  try {
+    await symlink(actualParent, aliasParent, 'dir');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+      t.skip('directory aliases are unavailable for the current test account');
+      return;
+    }
+    throw error;
+  }
+
+  const isolatedRoot = await policyModule.createCanonicalTemporaryRoot(
+    aliasParent,
+    'puntiro-check-',
+  );
+  try {
+    assert.equal(isolatedRoot, await realpath(isolatedRoot));
+    assert.ok(
+      isolatedRoot.startsWith(`${await realpath(actualParent)}${path.sep}`),
+      'isolated root must use the canonical trusted temporary parent',
+    );
+  } finally {
+    await rm(isolatedRoot, { force: true, recursive: true });
+  }
 });
 
 test('accepts relocated declarations when final identity and friend allowlist are exact', async () => {

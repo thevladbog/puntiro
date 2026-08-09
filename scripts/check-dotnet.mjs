@@ -798,6 +798,13 @@ function validateProtectedProjects(protectedProjects, repositoryRoot) {
   }
 }
 
+export async function createCanonicalTemporaryRoot(
+  temporaryDirectory = os.tmpdir(),
+  prefix = 'puntiro-dotnet-check-',
+) {
+  return realpath(await mkdtemp(path.join(temporaryDirectory, prefix)));
+}
+
 export async function runDotnetPolicy({
   dotnet = process.env.PUNTIRO_DOTNET_BIN ?? 'dotnet',
   repositoryRoot = defaultRepositoryRoot,
@@ -810,7 +817,7 @@ export async function runDotnetPolicy({
   validateProtectedProjects(protectedProjects, repositoryRoot);
   await validateSolutionProjectSet({ repositoryRoot, solutionPath, projectGraph });
   await validateEffectiveProjectGraph({ dotnet, repositoryRoot, projectGraph, logger });
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'puntiro-dotnet-check-'));
+  const temporaryRoot = await createCanonicalTemporaryRoot();
 
   try {
     await buildSolutionInIsolatedArtifacts({

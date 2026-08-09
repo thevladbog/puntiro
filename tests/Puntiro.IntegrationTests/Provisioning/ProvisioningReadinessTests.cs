@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Puntiro.IntegrationTests.Identity;
 using Puntiro.IntegrationTests.Infrastructure;
+using Puntiro.Modules.Integrations.Persistence;
 using Puntiro.Modules.Identity.Contracts;
 using Puntiro.Modules.Identity.Security;
 using Puntiro.Provisioning.Cli;
@@ -168,26 +169,28 @@ public sealed class ProvisioningReadinessTests(PostgresDatabase database)
     }
 
     [Fact]
-    public async Task Module_composition_owns_exact_schema_table_pairs()
+    public async Task Provisioning_composition_owns_exact_identity_and_tenancy_schema_table_pairs()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var scope = await ProvisioningTestScope.CreateAsync(database.ConnectionString);
+        await using (var integrations = new IntegrationsDbContext(
+            new DbContextOptionsBuilder<IntegrationsDbContext>()
+                .UseNpgsql(database.ConnectionString, npgsql =>
+                    npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "integrations"))
+                .Options))
+        {
+            await integrations.Database.MigrateAsync(cancellationToken);
+        }
         await using var connection = new NpgsqlConnection(database.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_name = ANY(@table_names)
-              AND table_schema NOT IN ('pg_catalog', 'information_schema')
+            WHERE table_schema = ANY(@schemas)
             ORDER BY table_schema, table_name
             """;
-        command.Parameters.AddWithValue("table_names", new[]
-        {
-            "admin_users", "password_credentials", "totp_credentials",
-            "recovery_codes", "sessions", "security_events",
-            "organizations", "memberships", "__EFMigrationsHistory"
-        });
+        command.Parameters.AddWithValue("schemas", new[] { "identity", "tenancy" });
         var actual = new List<(string Schema, string Table)>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
