@@ -26,8 +26,8 @@ The following commands passed locally in this checkout with the pinned runtimes 
 - `corepack pnpm dependencies:check` and `corepack pnpm dependencies:audit` — no known npm or transitive NuGet vulnerabilities reported by the configured registries;
 - `corepack pnpm docs:check`;
 - `corepack pnpm test:repository` — 73 passed, 0 failed;
-- `corepack pnpm test:cloud:contracts` — 28 passed, 0 failed, including Git-enumerated secret/config probes, restore-env validation and secret-safe exact dotenv execution;
-- `corepack pnpm test:cloud:compose` — 5 passed, 0 failed, covering database-only configuration, disabled/proxy-only/network-only/combined proxy values, arbitrary retained HMAC versions and the shared host Data Protection bind;
+- `corepack pnpm test:cloud:contracts` — 49 passed, 0 failed, including Git-enumerated secret/config probes, strict secret-safe dotenv execution, normal runtime-material preflight and isolated restore validation;
+- `corepack pnpm test:cloud:compose` — 6 passed, 0 failed, covering database-only configuration, mandatory Cloud runtime files, disabled/proxy-only/network-only/combined proxy values, arbitrary retained HMAC versions and non-creating Data Protection/certificate binds;
 - `corepack pnpm check:foundation` — aggregate documentation, dependency, repository, boundary, UI package and Cloud security checks passed;
 - `corepack pnpm check` — UI unit tests 78 passed, Storybook tests 171 passed, the static Storybook build passed, and Playwright tests 28 passed;
 - `dotnet tool restore` and `dotnet restore Puntiro.slnx --locked-mode`;
@@ -35,8 +35,9 @@ The following commands passed locally in this checkout with the pinned runtimes 
 - `dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build` — 168 passed, 0 failed, 0 skipped;
 - `dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build` against a disposable loopback-only `postgres:17.10-bookworm` instance — 141 passed, 0 failed, 0 skipped;
 - the trusted-proxy startup/behavior subset — 6 passed, covering a trusted peer, an untrusted peer with spoofed `X-Forwarded-For`, empty trust failure, the forbidden platform shortcut, network-only and combined allowlists; exact environment binder cases added another 5 passing cases;
-- database-only and opt-in `cloud-runtime` Compose configurations passed executable `docker compose config` tests with disposable validation-only values supplied by local files; no values were committed;
-- targeted Git-enumerated source/configuration scans found no runtime migration/service resolution, request/response-body logging, populated repository runtime credentials, or usable raw/base64-encoded integration-token secret. Ignored untracked local files are exempt; force-tracked ignored and non-ignored untracked configuration are scanned.
+- database-only and opt-in `cloud-runtime` Compose configurations passed executable `docker compose config` tests with disposable validation-only values supplied by local files; the Cloud profile fails closed without its ignored runtime environment, existing key ring and certificate, and no values were committed;
+- the normal-startup preflight verified private runtime-env, Data Protection key-ring and certificate modes, ownership and protected key material; the restore validator rejected normal-database targets and required matching isolated container/host-tool targets plus restored protected cryptographic material before container creation;
+- repository-wide Git-enumerated text/configuration scans found no runtime migration/service resolution, request/response-body logging, populated repository runtime credentials, or usable raw/base64-encoded integration-token secret. Ignored untracked local files are exempt; force-tracked ignored and non-ignored untracked configuration are scanned.
 
 The immutable GitHub Actions workflow and its pinned runtime/service contract passed local mutation tests. The hosted GitHub Actions workflow itself was **not run** as part of this local validation.
 

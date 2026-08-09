@@ -29,6 +29,7 @@ dotnet tool restore
 dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
 dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
 node scripts/check-cloud-security.mjs
+node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env
 corepack pnpm check
 ```
 
@@ -42,6 +43,6 @@ The declaration's source location is deliberately not part of this policy. `Prop
 
 `check:foundation` is the aggregate repository-foundation gate and includes both the fast and definitive layers. `check` runs the existing design-system validation pipeline; these commands are automated evidence only and do not replace Windows or physical-hardware acceptance.
 
-`test:cloud:contracts` runs secret-free repository mutation tests and requires no PostgreSQL. `test:cloud:compose` resolves the production-shaped Compose contract and requires Docker Compose, but starts no container. The integration-test command requires a secret `PUNTIRO_TEST_POSTGRES` maintenance connection to real PostgreSQL 17.10 and fails rather than skipping when it is absent. Use the ignored local configuration, secret-safe env helper and explicit migration/provisioning order in [Cloud development and deployment operations](cloud-development.md). Production Cloud never applies migrations at startup.
+`test:cloud:contracts` runs secret-free repository mutation tests and requires no PostgreSQL. `test:cloud:compose` resolves the production-shaped Compose contract and requires Docker Compose, but starts no container. The preflight command is an operator command: it intentionally fails until the ignored runtime env, nonempty Data Protection ring, certificate and service UID/GID ownership have been provisioned. The integration-test command requires a secret `PUNTIRO_TEST_POSTGRES` maintenance connection to real PostgreSQL 17.10 and fails rather than skipping when it is absent. Use the ignored local configuration, secret-safe env helper and explicit migration/provisioning order in [Cloud development and deployment operations](cloud-development.md). Production Cloud never applies migrations at startup.
 
 The repository-level `.npmrc` fixes dependency resolution to the public npm registry. Keep `pnpm-lock.yaml` free of machine-specific registry URLs so the same frozen lockfile is verifiable locally and on GitHub Actions.

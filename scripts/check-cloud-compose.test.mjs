@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -52,6 +52,8 @@ async function resolvedCloud(t, runtimeOverrides = {}) {
     'POSTGRES_PASSWORD=fixture-only',
     'PUNTIRO_POSTGRES_PORT=55439',
     'PUNTIRO_CLOUD_IMAGE=puntiro-cloud:fixture-only',
+    `PUNTIRO_CLOUD_UID=${process.getuid()}`,
+    `PUNTIRO_CLOUD_GID=${process.getgid()}`,
     `PUNTIRO_CLOUD_RUNTIME_ENV_FILE=${runtimeEnvPath}`,
     `Puntiro__Security__DataProtectionCertificateHostPath=${certificatePath}`,
     '',
@@ -79,6 +81,8 @@ async function resolvedCloud(t, runtimeOverrides = {}) {
     .filter(([, value]) => value !== undefined)
     .map(([name, value]) => `${name}=${value}`)
     .join('\n')}\n`);
+  await chmod(composeEnvPath, 0o600);
+  await chmod(runtimeEnvPath, 0o600);
 
   const result = spawnSync('docker', [
     'compose',
@@ -174,6 +178,7 @@ test('Cloud bind-mounts the same host Data Protection ring and certificate used 
   assert.equal(ring.type, 'bind');
   assert.equal(ring.source, ringPath);
   assert.equal(ring.target, '/var/lib/puntiro/data-protection-keys');
+  assert.equal(ring.bind.create_host_path, false);
   assert.equal(
     cloud.environment.Puntiro__Security__DataProtectionKeysPath,
     '/var/lib/puntiro/data-protection-keys',
@@ -181,8 +186,39 @@ test('Cloud bind-mounts the same host Data Protection ring and certificate used 
   assert.equal(certificate.type, 'bind');
   assert.equal(certificate.source, certificatePath);
   assert.equal(certificate.read_only, true);
+  assert.equal(certificate.bind.create_host_path, false);
   assert.equal(
     cloud.environment.Puntiro__Security__DataProtectionCertificatePath,
     '/run/puntiro-secrets/data-protection.pfx',
   );
+  assert.equal(cloud.user, `${process.getuid()}:${process.getgid()}`);
+});
+
+test('Cloud profile requires the runtime env file instead of silently starting without secrets', async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'puntiro-cloud-compose-missing-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const composeEnvPath = path.join(directory, 'compose.env');
+  const missingRuntime = path.join(directory, 'missing-runtime.env');
+  await writeFile(composeEnvPath, [
+    'POSTGRES_DB=puntiro_compose_fixture',
+    'POSTGRES_USER=puntiro_compose_fixture',
+    'POSTGRES_PASSWORD=fixture-only',
+    'PUNTIRO_POSTGRES_PORT=55439',
+    `PUNTIRO_CLOUD_RUNTIME_ENV_FILE=${missingRuntime}`,
+    `Puntiro__Security__DataProtectionKeysPath=${path.join(directory, 'missing-ring')}`,
+    `Puntiro__Security__DataProtectionCertificateHostPath=${path.join(directory, 'missing-certificate.pfx')}`,
+    '',
+  ].join('\n'));
+
+  const result = spawnSync('docker', [
+    'compose',
+    '--env-file', composeEnvPath,
+    '--file', composePath,
+    '--profile', 'cloud-runtime',
+    'config',
+    '--format', 'json',
+  ], { cwd: root, encoding: 'utf8', env: process.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /missing-runtime\.env/);
 });

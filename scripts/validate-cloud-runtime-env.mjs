@@ -1,6 +1,5 @@
-import path from 'node:path';
-import { lstat } from 'node:fs/promises';
 import { loadCloudEnvFiles } from './cloud-env.mjs';
+import { validateCloudRuntimeMaterial } from './cloud-runtime-material.mjs';
 
 function argumentsFrom(argv) {
   const result = {};
@@ -40,7 +39,9 @@ function parseConnectionString(value) {
     if (segment.length === 0) continue;
     const separator = segment.indexOf('=');
     if (separator <= 0) throw new Error('runtime connection string format is invalid');
-    fields.set(segment.slice(0, separator).trim().toLowerCase(), segment.slice(separator + 1));
+    const name = segment.slice(0, separator).trim().toLowerCase();
+    if (fields.has(name)) throw new Error('runtime connection string format is invalid');
+    fields.set(name, segment.slice(separator + 1));
   }
   return fields;
 }
@@ -79,18 +80,12 @@ function validateIndependentHmacKeys(...sets) {
   }
 }
 
-async function requirePrivatePath(value, kind, message) {
-  if (!path.isAbsolute(value)) throw new Error(message);
-  let information;
-  try {
-    information = await lstat(value);
-  } catch {
-    throw new Error(message);
-  }
-  const expectedKind = kind === 'directory' ? information.isDirectory() : information.isFile();
-  if (!expectedKind || information.isSymbolicLink() || (information.mode & 0o077) !== 0) {
-    throw new Error(message);
-  }
+function assertConnectionTarget(connection, expected) {
+  return connection.get('host') === expected.host &&
+    connection.get('port') === expected.port &&
+    connection.get('database') === expected.database &&
+    connection.get('username') === expected.username &&
+    connection.get('password') === expected.password;
 }
 
 async function main() {
@@ -104,43 +99,47 @@ async function main() {
   if (!/^puntiro_restore_[a-z0-9_]+$/.test(database)) {
     throw new Error('isolated restore database name must use the puntiro_restore_ prefix');
   }
-  if (path.resolve(required(compose, 'PUNTIRO_CLOUD_RUNTIME_ENV_FILE')) !==
-      path.resolve(runtimeEnvPath)) {
-    throw new Error('Compose runtime env path must equal the validated restore runtime env file');
+  const username = required(compose, 'POSTGRES_USER');
+  const password = required(compose, 'POSTGRES_PASSWORD');
+  const restorePort = required(compose, 'PUNTIRO_POSTGRES_PORT');
+  if (!/^[1-9][0-9]{3,4}$/.test(restorePort) || Number(restorePort) > 65535 ||
+      restorePort === '5432') {
+    throw new Error(
+      'restore host-tool connections must use the distinct documented loopback port',
+    );
   }
-  required(compose, 'POSTGRES_USER');
-  required(compose, 'POSTGRES_PASSWORD');
-  const certificateHostPath = required(
-    compose,
-    'Puntiro__Security__DataProtectionCertificateHostPath',
-  );
 
   const connection = parseConnectionString(required(runtime, 'ConnectionStrings__Puntiro'));
-  if (connection.get('host') !== 'postgres') {
+  if (connection.get('host') !== 'postgres' || connection.get('port') !== '5432') {
     throw new Error('runtime connection host must be the isolated Compose postgres service');
   }
   if (connection.get('database') !== database) {
     throw new Error('runtime connection database must equal the isolated restore database');
   }
-  required(runtime, 'Puntiro__Admin__AllowedOrigin');
-  const keyRingPath = required(runtime, 'Puntiro__Security__DataProtectionKeysPath');
-  const certificateRuntimePath = required(
-    runtime,
-    'Puntiro__Security__DataProtectionCertificatePath',
-  );
-  if (path.resolve(certificateRuntimePath) !== path.resolve(certificateHostPath)) {
-    throw new Error('Data Protection certificate path must equal the validated host certificate path');
+  if (connection.get('username') !== username || connection.get('password') !== password) {
+    throw new Error('runtime connection credentials must equal the isolated restore database credentials');
   }
-  await requirePrivatePath(
-    keyRingPath,
-    'directory',
-    'Data Protection key ring must be an existing private directory',
-  );
-  await requirePrivatePath(
-    certificateHostPath,
-    'file',
-    'Data Protection certificate must be an existing private file',
-  );
+
+  const expectedHost = {
+    host: '127.0.0.1',
+    port: restorePort,
+    database,
+    username,
+    password,
+  };
+  const hostConnections = [
+    parseConnectionString(required(compose, 'ConnectionStrings__Puntiro')),
+    parseConnectionString(required(compose, 'PUNTIRO_TEST_POSTGRES')),
+  ];
+  if (hostConnections.some(hostConnection =>
+    !assertConnectionTarget(hostConnection, expectedHost))) {
+    throw new Error(
+      'host-tool connections must target the same isolated restore database and credentials',
+    );
+  }
+
+  required(runtime, 'Puntiro__Admin__AllowedOrigin');
+  await validateCloudRuntimeMaterial({ compose, composeEnvPath, runtime, runtimeEnvPath });
   required(runtime, 'Puntiro__Security__DataProtectionCertificatePassword');
   validateIndependentHmacKeys(
     validateHmac(runtime, 'Session'),

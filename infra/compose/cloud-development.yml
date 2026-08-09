@@ -22,6 +22,7 @@ services:
   cloud:
     profiles: ["cloud-runtime"]
     image: ${PUNTIRO_CLOUD_IMAGE:-puntiro-cloud:local}
+    user: "${PUNTIRO_CLOUD_UID:-10001}:${PUNTIRO_CLOUD_GID:-10001}"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -34,7 +35,7 @@ services:
       - /tmp:mode=1777
     env_file:
       - path: ${PUNTIRO_CLOUD_RUNTIME_ENV_FILE:-./cloud-runtime.env}
-        required: false
+        required: true
         format: raw
     environment:
       ASPNETCORE_ENVIRONMENT: Production
@@ -46,11 +47,13 @@ services:
         source: ${Puntiro__Security__DataProtectionKeysPath:-./cloud-data-protection-keys}
         target: /var/lib/puntiro/data-protection-keys
         bind:
-          create_host_path: true
+          create_host_path: false
       - type: bind
         source: ${Puntiro__Security__DataProtectionCertificateHostPath:-./cloud-secrets/data-protection.pfx}
         target: /run/puntiro-secrets/data-protection.pfx
         read_only: true
+        bind:
+          create_host_path: false
 
 volumes:
   puntiro-cloud-postgres:

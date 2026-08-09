@@ -3,6 +3,13 @@ import path from 'node:path';
 
 const dotenvName = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
+function hasInvalidValueSyntax(value) {
+  return value.trim() !== value ||
+    /["'`#]/.test(value) ||
+    /\$(?:\(|\{|[A-Za-z_])/.test(value) ||
+    /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/u.test(value);
+}
+
 export async function readCloudEnvFile(filePath) {
   const metadata = await lstat(filePath);
   if (!metadata.isFile() || metadata.isSymbolicLink()) {
@@ -24,7 +31,18 @@ export async function readCloudEnvFile(filePath) {
         `${path.basename(filePath)}:${index + 1}: invalid dotenv assignment`,
       );
     }
-    values.set(name, line.slice(separator + 1));
+    const value = line.slice(separator + 1);
+    if (hasInvalidValueSyntax(value)) {
+      throw new Error(
+        `${path.basename(filePath)}:${index + 1}: invalid dotenv value syntax`,
+      );
+    }
+    if (values.has(name)) {
+      throw new Error(
+        `${path.basename(filePath)}:${index + 1}: duplicate dotenv assignment`,
+      );
+    }
+    values.set(name, value);
   }
   return values;
 }

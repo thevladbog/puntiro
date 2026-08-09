@@ -16,6 +16,8 @@ const requiredArtifacts = [
   'infra/compose/.env.cloud.example',
   'infra/compose/cloud-runtime.env.example',
   'scripts/run-with-cloud-env.mjs',
+  'scripts/preflight-cloud-runtime.mjs',
+  'scripts/cloud-runtime-material.mjs',
   'scripts/validate-cloud-runtime-env.mjs',
   'docs/adr/0003-global-identity-and-credentials.md',
   'docs/modules/identity.md',
@@ -37,6 +39,7 @@ const requiredAgentCommands = [
   'node scripts/check-cloud-security.mjs',
   'corepack pnpm test:cloud:contracts',
   'corepack pnpm test:cloud:compose',
+  'node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env',
 ];
 
 async function exists(target) {
@@ -116,14 +119,16 @@ function jsonEntries(content) {
   }
 }
 
-function textConfigEntries(content) {
+function lineConfigEntries(content) {
   const entries = [];
   const yamlStack = [];
   for (const line of content.split(/\r?\n/)) {
     if (line.trim().length === 0 || line.trimStart().startsWith('#')) continue;
-    const dotenv = line.match(/^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)=(.*)$/);
-    if (dotenv) {
-      entries.push([dotenv[1], unquote(dotenv[2])]);
+    const assignment = line.match(
+      /^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*(.*?)\s*$/,
+    );
+    if (assignment) {
+      entries.push([assignment[1], unquote(assignment[2])]);
       continue;
     }
     const yaml = line.match(/^(\s*)(?:-\s*)?["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?\s*:\s*(.*)$/);
@@ -140,29 +145,119 @@ function textConfigEntries(content) {
   return entries;
 }
 
-function configEntries(relativePath, content) {
-  return path.extname(relativePath).toLowerCase() === '.json'
-    ? [...jsonEntries(content), ...textConfigEntries(content)]
-    : textConfigEntries(content);
+function inlineYamlEntries(content) {
+  const entries = [];
+  for (const inline of content.matchAll(/\{([^{}\r\n]+)\}/g)) {
+    if (inline.index > 0 && content[inline.index - 1] === '$') continue;
+    for (const item of inline[1].split(',')) {
+      const match = item.match(
+        /^\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?\s*:\s*(.*?)\s*$/,
+      );
+      if (match) entries.push([match[1], unquote(match[2])]);
+    }
+  }
+  return entries;
+}
+
+function xmlEntries(content) {
+  const entries = [];
+  for (const element of content.matchAll(/<(?:add|entry|property)\b([^>]*)>/gi)) {
+    const attributes = new Map();
+    for (const attribute of element[1].matchAll(
+      /([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*["']([^"']*)["']/g,
+    )) {
+      attributes.set(attribute[1].toLowerCase(), attribute[2]);
+    }
+    const name = attributes.get('key') ?? attributes.get('name');
+    if (name && attributes.has('value')) entries.push([name, attributes.get('value')]);
+  }
+  for (const match of content.matchAll(
+    /<([A-Za-z_][A-Za-z0-9_.:-]*)\b[^>]*>\s*([^<]*?)\s*<\/\1\s*>/g,
+  )) {
+    entries.push([match[1], unquote(match[2])]);
+  }
+  const stack = [];
+  for (const token of content.matchAll(/<[^>]+>|[^<]+/g)) {
+    if (!token[0].startsWith('<')) {
+      const value = unquote(token[0]).trim();
+      if (value.length > 0 && stack.length > 0) entries.push([stack.join('__'), value]);
+      continue;
+    }
+    if (/^<\s*(?:\?|!)/.test(token[0])) continue;
+    const closing = token[0].match(/^<\s*\/\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
+    if (closing) {
+      if (stack.at(-1) === closing[1]) stack.pop();
+      continue;
+    }
+    const opening = token[0].match(/^<\s*([A-Za-z_][A-Za-z0-9_.:-]*)/);
+    if (opening && !/\/\s*>$/.test(token[0])) stack.push(opening[1]);
+  }
+  return entries;
+}
+
+function configEntries(content) {
+  return [
+    ...jsonEntries(content),
+    ...lineConfigEntries(content),
+    ...inlineYamlEntries(content),
+    ...xmlEntries(content),
+  ];
 }
 
 function isConfigurationPath(relativePath) {
-  if (!/^(?:\.github|apps|infra|deploy|src|tools)\//.test(relativePath) &&
-      relativePath.includes('/')) return false;
   const basename = path.basename(relativePath).toLowerCase();
   const extension = path.extname(basename);
-  return ['.json', '.yml', '.yaml', '.env', '.config', '.conf', '.toml', '.ini', '.properties', '.xml']
-    .includes(extension) ||
-    basename.startsWith('.env') ||
-    /(?:appsettings|compose|dockerfile|settings|config)/.test(basename);
+  const segments = relativePath.toLowerCase().split('/');
+  if (segments.some(segment =>
+    ['.github', 'config', 'configs', 'configuration', 'deploy', 'deployment', 'infra'].includes(segment)) ||
+    ['.json', '.yml', '.yaml', '.env', '.config', '.conf', '.toml', '.ini', '.properties', '.xml']
+      .includes(extension) ||
+    basename.startsWith('.env')) return true;
+  if (['.cs', '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.md', '.txt'].includes(extension)) {
+    return false;
+  }
+  return /(?:^|[._-])(?:appsettings|compose|dockerfile|env|runtime|settings|secrets?|credentials?)(?:[._-]|$)/
+    .test(basename);
 }
 
 function isReferenceValue(value) {
-  const trimmed = value.trim();
-  return trimmed.length === 0 ||
-    /^\$\{(?:\{[^}]+\}|[^}]+)\}$/.test(trimmed) ||
+  const trimmed = unquote(value).trim();
+  if (trimmed.length === 0) return true;
+  if (/^\$\{\{[^}]+\}\}$/.test(trimmed)) return true;
+  const compose = trimmed.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*(?:(:\?|\?)(?:[^}]*))?\}$/);
+  if (compose) return true;
+  const fallback = trimmed.match(
+    /^\$\{[A-Za-z_][A-Za-z0-9_]*(?::?-)(.*)\}$/,
+  );
+  if (fallback) {
+    const fallbackValue = fallback[1].trim();
+    return fallbackValue.length === 0 || isReferenceValue(fallbackValue);
+  }
+  return /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed) ||
     /^%[A-Za-z_][A-Za-z0-9_]*%$/.test(trimmed) ||
     /^<[^>]+>$/.test(trimmed);
+}
+
+function normalizedName(name) {
+  return name.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function isConnectionName(name) {
+  const normalized = normalizedName(name);
+  return normalized.endsWith('connectionstringspuntiro') ||
+    normalized.endsWith('puntirotestpostgres');
+}
+
+function isHmacName(name) {
+  return /puntirosecurity(?:session|recovery|integration)hmackeys[a-z0-9]+$/
+    .test(normalizedName(name));
+}
+
+function isSecretName(name) {
+  const normalized = name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+  const segments = normalized.split(/[^A-Z0-9]+/).filter(Boolean);
+  const joined = segments.join('_');
+  return /(?:^|_)(?:PASSWORD|SECRET|TOKEN|API_KEY|AUTH_TOKEN|ACCESS_TOKEN|BEARER_TOKEN|CLIENT_SECRET|SECRET_KEY|PRIVATE_KEY|ACCESS_KEY|INTEGRATION_TOKEN)$/.test(joined);
 }
 
 function isExplicitCiFixture(relativePath, name, value) {
@@ -213,40 +308,40 @@ async function validateRuntime(root, errors, tracked) {
 }
 
 async function validateTrackedConfiguration(root, errors, tracked) {
-  const candidates = tracked.filter(isConfigurationPath);
-  for (const relativePath of candidates) {
+  for (const relativePath of tracked) {
     const target = path.join(root, relativePath);
-    const content = await readFile(target, 'utf8');
-    const entries = configEntries(relativePath, content);
+    const bytes = await readFile(target);
+    if (bytes.includes(0)) continue;
+    let content;
+    try {
+      content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      continue;
+    }
+
+    if (containsIntegrationToken(content)) {
+      errors.push(`${relativePath} must not contain an integration token`);
+    }
+    if (!isConfigurationPath(relativePath)) continue;
+
+    const entries = configEntries(content);
     const populated = ([name, value]) =>
       !isReferenceValue(value) && !isExplicitCiFixture(relativePath, name, value);
     const hasConnection = entries.some(entry =>
-      /(?:^|__)(?:ConnectionStrings__Puntiro|PUNTIRO_TEST_POSTGRES)$/i.test(entry[0]) &&
-      populated(entry));
+      isConnectionName(entry[0]) && populated(entry));
     if (hasConnection) {
       errors.push(`${relativePath} must not contain a populated ConnectionStrings__Puntiro value`);
     }
 
     const hasHmac = entries.some(entry =>
-      /(?:^|__)Puntiro__Security__(?:Session|Recovery|Integration)Hmac__Keys__[A-Za-z0-9_-]+$/i
-        .test(entry[0]) && populated(entry));
+      isHmacName(entry[0]) && populated(entry));
     if (hasHmac) {
       errors.push(`${relativePath} must not contain populated HMAC key material`);
     }
 
-    const hasOtherSecret = entries.some(entry => {
-      const explicit = /(?:^|__)(?:POSTGRES_PASSWORD|Puntiro__Security__DataProtectionCertificatePassword)$/i
-        .test(entry[0]);
-      const generic = /(?:^|__)(?:CLIENT_SECRET|API_KEY|SECRET_KEY)$/i.test(entry[0]) &&
-        entry[1].length >= 12;
-      return (explicit || generic) && populated(entry);
-    });
+    const hasOtherSecret = entries.some(entry => isSecretName(entry[0]) && populated(entry));
     if (hasOtherSecret) {
       errors.push(`${relativePath} must not contain populated secret configuration`);
-    }
-
-    if (containsIntegrationToken(content)) {
-      errors.push(`${relativePath} must not contain an integration token`);
     }
   }
 }
@@ -286,13 +381,18 @@ async function validateCompose(root, errors) {
     errors.push('infra/compose/cloud-development.yml must use a named PostgreSQL data volume');
   }
   if (!/env_file:\s*[\s\S]*PUNTIRO_CLOUD_RUNTIME_ENV_FILE[\s\S]*format:\s*raw/.test(content) ||
+      !/required:\s*true/.test(content) ||
       /Puntiro__Proxy__Known(?:Proxies|Networks)__\d+\s*:/.test(content) ||
       /Puntiro__Security__(?:Session|Recovery|Integration)Hmac__Keys__[A-Za-z0-9_-]+\s*:/.test(content)) {
     errors.push('infra/compose/cloud-development.yml must pass dynamic Cloud runtime values through the ignored raw env_file');
   }
   if (!/type:\s*bind[\s\S]{0,180}source:\s*\$\{Puntiro__Security__DataProtectionKeysPath[\s\S]{0,180}target:\s*\/var\/lib\/puntiro\/data-protection-keys/.test(content) ||
-      /puntiro-cloud-data-protection-keys/.test(content)) {
+      /puntiro-cloud-data-protection-keys/.test(content) ||
+      (content.match(/create_host_path:\s*false/g) ?? []).length < 2) {
     errors.push('infra/compose/cloud-development.yml must bind the host provisioning Data Protection ring into Cloud');
+  }
+  if (!/user:\s*["']?\$\{PUNTIRO_CLOUD_UID[^}]*\}:\$\{PUNTIRO_CLOUD_GID/.test(content)) {
+    errors.push('infra/compose/cloud-development.yml must run Cloud as the configured service uid and gid');
   }
 }
 
@@ -344,6 +444,19 @@ async function validateRestoreOrdering(root, errors) {
   }
 }
 
+async function validateNormalPreflightOrdering(root, errors) {
+  const target = path.join(root, 'docs', 'runbooks', 'cloud-development.md');
+  if (!await exists(target)) return;
+  const content = await readFile(target, 'utf8');
+  const preflight = content.indexOf('node scripts/preflight-cloud-runtime.mjs');
+  const cloudStart = content.search(
+    /docker compose[\s\S]{0,500}--profile\s+cloud-runtime[\s\S]{0,160}\b(?:create|up|start)\b/,
+  );
+  if (preflight === -1 || cloudStart === -1 || preflight > cloudStart) {
+    errors.push('docs/runbooks/cloud-development.md must run normal Cloud preflight before creating or starting Cloud');
+  }
+}
+
 export async function validateCloudSecurity(rootUrl) {
   const root = fileURLToPath(rootUrl);
   const errors = [];
@@ -361,6 +474,7 @@ export async function validateCloudSecurity(rootUrl) {
   }
   await validateAgents(root, errors);
   await validateRestoreOrdering(root, errors);
+  await validateNormalPreflightOrdering(root, errors);
   return errors;
 }
 

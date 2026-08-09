@@ -24,6 +24,7 @@ dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --con
 node scripts/check-cloud-security.mjs
 corepack pnpm test:cloud:contracts
 corepack pnpm test:cloud:compose
+node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env
 `,
   'apps/cloud/Program.cs': 'app.UsePuntiroForwardedHeaders();\napp.UseAuthentication();\napp.Run();\n',
   'apps/cloud/appsettings.json': JSON.stringify({
@@ -58,10 +59,19 @@ corepack pnpm test:cloud:compose
     env_file:
       - path: \${PUNTIRO_CLOUD_RUNTIME_ENV_FILE}
         format: raw
+        required: true
+    user: "\${PUNTIRO_CLOUD_UID}:\${PUNTIRO_CLOUD_GID}"
     volumes:
       - type: bind
         source: \${Puntiro__Security__DataProtectionKeysPath}
         target: /var/lib/puntiro/data-protection-keys
+        bind:
+          create_host_path: false
+      - type: bind
+        source: \${Puntiro__Security__DataProtectionCertificateHostPath}
+        target: /run/puntiro-secrets/data-protection.pfx
+        bind:
+          create_host_path: false
 volumes:
   puntiro-cloud-postgres:
 `,
@@ -77,6 +87,8 @@ Puntiro__Security__SessionHmac__Keys__v1=
 Puntiro__Security__SessionHmac__Keys__v1=
 `,
   'scripts/run-with-cloud-env.mjs': '// fixture\n',
+  'scripts/preflight-cloud-runtime.mjs': '// fixture\n',
+  'scripts/cloud-runtime-material.mjs': '// fixture\n',
   'scripts/validate-cloud-runtime-env.mjs': '// fixture\n',
   'infra/compose/.env.cloud': `ConnectionStrings__Puntiro=local-ignored-value
 Puntiro__Security__SessionHmac__Keys__v1=local-ignored-value
@@ -88,6 +100,8 @@ Puntiro__Security__SessionHmac__Keys__v1=local-ignored-value
   'docs/runbooks/cloud-development.md': `# Cloud development
 PUNTIRO_RESTORE_PROJECT=puntiro-restore-drill
 node scripts/validate-cloud-runtime-env.mjs --restore-project "$PUNTIRO_RESTORE_PROJECT"
+node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env
+docker compose --profile cloud-runtime up -d cloud
 docker compose -p "$PUNTIRO_RESTORE_PROJECT" up -d postgres
 `,
   'docs/runbooks/first-owner-provisioning.md': '# First owner\n',
@@ -191,6 +205,7 @@ Puntiro__Security__DataProtectionCertificatePassword=populated
   });
   assert.deepEqual(await validateCloudSecurity(fixture), [
     'apps/cloud/appsettings.Production.json must not contain an integration token',
+    'apps/cloud/appsettings.Production.json must not contain populated secret configuration',
     'infra/compose/.env.cloud.example must not contain a populated ConnectionStrings__Puntiro value',
     'infra/compose/.env.cloud.example must not contain populated secret configuration',
   ]);
@@ -277,6 +292,84 @@ test('does not exempt a populated local config unless it is both ignored and unt
   ]);
 });
 
+test('scans configuration in alternative tracked paths extensions and env-example names', async t => {
+  const fixture = await createCloudFixture(t, {
+    'custom/runtime.credentials': 'SERVICE_API_KEY = bounded-review-probe\n',
+    'config/private/runtime.data': '{"Puntiro":{"Security":{"DataProtectionCertificatePassword":"bounded-review-probe"}}}\n',
+    'elsewhere/service.env.example': 'ConnectionStrings__Puntiro = Host=review.invalid;Database=review\n',
+  });
+
+  const errors = await validateCloudSecurity(fixture);
+  assert.ok(errors.includes('custom/runtime.credentials must not contain populated secret configuration'));
+  assert.ok(errors.includes('config/private/runtime.data must not contain populated secret configuration'));
+  assert.ok(errors.includes('elsewhere/service.env.example must not contain a populated ConnectionStrings__Puntiro value'));
+  assert.doesNotMatch(JSON.stringify(errors), /bounded-review-probe|Host=review\.invalid/);
+});
+
+test('detects JSON YAML dotenv INI TOML XML property and Compose fallback assignments', async t => {
+  const fixture = await createCloudFixture(t, {
+    'config/runtime.json': '{"ConnectionStrings":{"Puntiro":"Host=review.invalid"}}',
+    'config/runtime-block.yaml': 'environment:\n  POSTGRES_PASSWORD: bounded-review-probe\n',
+    'config/runtime-inline.yaml': 'environment: { CLIENT_SECRET: bounded-review-probe }\n',
+    'config/runtime.env': 'Puntiro__Security__SessionHmac__Keys__v2 = bounded-review-probe\n',
+    'config/runtime.ini': 'AUTH_TOKEN = bounded-review-probe\n',
+    'config/runtime.toml': 'SERVICE_API_KEY = bounded-review-probe\n',
+    'config/runtime.xml': '<settings><add key="SECRET_KEY" value="bounded-review-probe" /><ConnectionStrings__Puntiro>Host=review.invalid</ConnectionStrings__Puntiro></settings>\n',
+    'config/runtime-nested.xml': '<configuration><ConnectionStrings><Puntiro>Host=review.invalid</Puntiro></ConnectionStrings></configuration>\n',
+    'config/runtime-reversed.xml': '<settings><property value="bounded-review-probe" name="DATABASE_PASSWORD" /></settings>\n',
+    'config/runtime.properties': 'Puntiro__Security__DataProtectionCertificatePassword = bounded-review-probe\n',
+    'infra/compose/fallback.yml': 'environment:\n  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bounded-review-probe}\n  CLIENT_SECRET: ${CLIENT_SECRET-bounded-review-probe}\n',
+  });
+
+  const errors = await validateCloudSecurity(fixture);
+  assert.ok(errors.includes('config/runtime.json must not contain a populated ConnectionStrings__Puntiro value'));
+  for (const relativePath of [
+    'config/runtime-block.yaml',
+    'config/runtime-inline.yaml',
+    'config/runtime.ini',
+    'config/runtime.toml',
+    'config/runtime.properties',
+    'config/runtime-reversed.xml',
+    'infra/compose/fallback.yml',
+  ]) {
+    assert.ok(errors.includes(`${relativePath} must not contain populated secret configuration`), relativePath);
+  }
+  assert.ok(errors.includes('config/runtime.env must not contain populated HMAC key material'));
+  assert.ok(errors.includes('config/runtime.xml must not contain a populated ConnectionStrings__Puntiro value'));
+  assert.ok(errors.includes('config/runtime.xml must not contain populated secret configuration'));
+  assert.ok(errors.includes('config/runtime-nested.xml must not contain a populated ConnectionStrings__Puntiro value'));
+  assert.doesNotMatch(JSON.stringify(errors), /bounded-review-probe|Host=review\.invalid/);
+});
+
+test('scans canonical and bounded decoded tokens in every tracked text file regardless of extension', async t => {
+  const raw = `pnt_live_${'Q'.repeat(22)}.${'R'.repeat(43)}`;
+  const encoded = Buffer.from(`pnt_test_${'S'.repeat(22)}.${'T'.repeat(43)}`).toString('base64');
+  const fixture = await createCloudFixture(t, {
+    'arbitrary/topology.notes': `credential=${raw}\n`,
+    'unusual/nested/blob.reference': encoded,
+  });
+
+  const errors = await validateCloudSecurity(fixture);
+  assert.ok(errors.includes('arbitrary/topology.notes must not contain an integration token'));
+  assert.ok(errors.includes('unusual/nested/blob.reference must not contain an integration token'));
+  assert.doesNotMatch(JSON.stringify(errors), /pnt_live_Q|pnt_test_S|cG50X3Rlc3Q/);
+});
+
+test('allows documentation names blank values and pure environment references without fallbacks', async t => {
+  const fixture = await createCloudFixture(t, {
+    'docs/reference/names.md': '`POSTGRES_PASSWORD`, `SERVICE_API_KEY`, and `ConnectionStrings__Puntiro` are variable names.\nAuthorization: Bearer pnt_live_<public-id>.<secret>\n',
+    'config/references.yml': `environment:
+  POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
+  CLIENT_SECRET: \${CLIENT_SECRET:?required}
+  AUTH_TOKEN: \${AUTH_TOKEN:-\${FALLBACK_AUTH_TOKEN}}
+  SERVICE_API_KEY: ""
+`,
+    'config/references.xml': '<add key="SECRET_KEY" value="${SECRET_KEY}" />\n',
+  });
+
+  assert.deepEqual(await validateCloudSecurity(fixture), []);
+});
+
 test('rejects missing cookie security attributes', async t => {
   const fixture = await createCloudFixture(t, {
     'apps/cloud/Endpoints/AdminAuthEndpoints.cs': 'new CookieOptions { Secure = true };',
@@ -302,6 +395,7 @@ test('rejects floating PostgreSQL tags and unsafe listener exposure', async t =>
     'infra/compose/cloud-development.yml must use a named PostgreSQL data volume',
     'infra/compose/cloud-development.yml must pass dynamic Cloud runtime values through the ignored raw env_file',
     'infra/compose/cloud-development.yml must bind the host provisioning Data Protection ring into Cloud',
+    'infra/compose/cloud-development.yml must run Cloud as the configured service uid and gid',
   ]);
 });
 
@@ -377,5 +471,6 @@ test('requires all cloud validation commands in AGENTS.md', async t => {
     'AGENTS.md must include: node scripts/check-cloud-security.mjs',
     'AGENTS.md must include: corepack pnpm test:cloud:contracts',
     'AGENTS.md must include: corepack pnpm test:cloud:compose',
+    'AGENTS.md must include: node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env',
   ]);
 });

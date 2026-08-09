@@ -6,7 +6,7 @@ ASP.NET Core maps `__` in environment names to configuration sections. Populated
 
 `infra/compose/.env.cloud.example` defines Compose interpolation plus host-only connection overlays. Copy it to ignored `.env.cloud`. `infra/compose/cloud-runtime.env.example` defines values passed to Cloud through Compose `env_file` with `format: raw`; copy it to ignored `cloud-runtime.env`. Both populated files must be untracked and mode `0600`.
 
-The format is strict dotenv: one raw `NAME=VALUE` assignment per line, no `export`, shell expansion, quotes, or inline comments. Do not source either file. Use both with `docker compose --env-file`; use `node scripts/run-with-cloud-env.mjs --env-file ... -- command` for host tools. An Npgsql value such as `Host=postgres;Port=5432;Database=...` retains every semicolon exactly.
+The format is strict dotenv: one raw `NAME=VALUE` assignment per line. Full-line comments beginning with `#` and blank lines are allowed. Duplicate names within one file, `export`, quotes, inline `#` comments, dollar command/parameter substitution syntax, backticks, control characters, tabs and leading/trailing value whitespace are rejected. Do not source either file. A later file passed to `run-with-cloud-env.mjs` may intentionally override an earlier file, which is how the host connection overlay replaces the container connection. Use both with `docker compose --env-file`; use `node scripts/run-with-cloud-env.mjs --env-file ... -- command` for host tools. Raw semicolons, internal ASCII spaces and base64 `=` padding are preserved exactly under `shell: false`.
 
 Compose loads `cloud-runtime.env` without enumerating HMAC versions or proxy indices. This lets operators supply `v0`, `v1`, `v2`, and later retained versions without changing Compose. Missing proxy variables stay absent; never create blank indexed elements.
 
@@ -20,10 +20,12 @@ Compose loads `cloud-runtime.env` without enumerating HMAC versions or proxy ind
 | `POSTGRES_PASSWORD` | Strong random password | Secret | Local database password; never commit or echo. |
 | `PUNTIRO_CLOUD_IMAGE` | Immutable reviewed image reference | Operational | Defaults to the local placeholder only for opt-in development. Production must use a reviewed immutable image/digest. |
 | `PUNTIRO_CLOUD_RUNTIME_ENV_FILE` | Absolute or Compose-relative file path | Operational | Raw ignored runtime env file. Restore validation requires it to equal the file being validated. |
+| `PUNTIRO_CLOUD_UID` | Non-zero numeric Unix UID | Operational | Exact owner of the host ring/key files and certificate and the UID forced for the Cloud container. Normal and restore preflight fail on an ownership mismatch. |
+| `PUNTIRO_CLOUD_GID` | Non-zero numeric Unix GID | Operational | Exact group of the host ring/key files and certificate and the GID forced for the Cloud container. |
 | `PUNTIRO_RESTORE_PROJECT` | Isolated Compose project marker | Operational | Blank during normal use. Restore validation requires an exact dedicated project name before any service is created/started. |
 | `Puntiro__Security__DataProtectionCertificateHostPath` | Absolute existing private PKCS#12 path | Operational | Bind-mount source. Must equal the host runtime certificate path in restore validation. |
-| `PUNTIRO_TEST_POSTGRES` | Npgsql maintenance connection string | Secret | Host-only integration-test connection; principal must create/drop disposable databases. |
-| `ConnectionStrings__Puntiro` | Npgsql connection string | Secret | In `.env.cloud`, a host-only loopback overlay for EF/provisioning; in `cloud-runtime.env`, the Cloud connection to Compose service `postgres`. The helper loads the host overlay last. |
+| `PUNTIRO_TEST_POSTGRES` | Npgsql maintenance connection string | Secret | Host-only integration-test connection; principal must create/drop disposable databases. During restore it must target the isolated restore database, credentials and distinct loopback port exactly. |
+| `ConnectionStrings__Puntiro` | Npgsql connection string | Secret | In `.env.cloud`, a host-only loopback overlay for EF/provisioning; in `cloud-runtime.env`, the Cloud connection to Compose service `postgres:5432`. Restore validation requires both host-tool connections and the container connection to use the same isolated database/user/password. The helper loads the host overlay last. |
 
 ## Cloud runtime variables
 
@@ -33,8 +35,8 @@ Compose loads `cloud-runtime.env` without enumerating HMAC versions or proxy ind
 | `Puntiro__Proxy__Enabled` | `true` or `false` | Non-secret | Disabled requires zero allowlist values. Enable only behind the reviewed trusted proxy boundary. |
 | `Puntiro__Proxy__KnownProxies__<index>` | Literal IPv4 or IPv6 address | Operational | Optional immediate trusted proxy addresses, densely indexed from zero. |
 | `Puntiro__Proxy__KnownNetworks__<index>` | IPv4/IPv6 CIDR | Operational | Optional immediate trusted proxy networks, densely indexed from zero. Enabled mode needs at least one actual proxy/network. |
-| `Puntiro__Security__DataProtectionKeysPath` | Absolute existing mode-`0700` host directory | Operational | One persistent ring used by host provisioning and bind-mounted into Cloud. |
-| `Puntiro__Security__DataProtectionCertificatePath` | Absolute existing mode-`0600` host PKCS#12 path | Operational | Host-tool path. Compose overrides it with the read-only in-container mount path. |
+| `Puntiro__Security__DataProtectionKeysPath` | Absolute existing mode-`0700` host directory | Operational | One persistent ring used by host provisioning and bind-mounted into Cloud. Before startup it must contain at least one private regular `key-<uuid>.xml` with the expected protected ASP.NET Data Protection key structure. |
+| `Puntiro__Security__DataProtectionCertificatePath` | Absolute existing mode-`0600` host PKCS#12 path | Operational | Host-tool path containing nonempty PKCS#12 material. Compose overrides it with the read-only in-container mount path. |
 | `Puntiro__Security__DataProtectionCertificatePassword` | PKCS#12 password | Secret | Store separately from certificate backup. |
 | `Puntiro__Security__SessionHmac__CurrentVersion` | 1–32 ASCII letters/digits/`-`/`_` | Non-secret | Version used for new server sessions. |
 | `Puntiro__Security__SessionHmac__Keys__v1` | Canonical base64 of exactly 32 random bytes | Secret | Example retained-key name. Add `Keys__<version>` for every stored-session version, including old versions. |
@@ -61,4 +63,6 @@ These keys are committed in `apps/cloud/appsettings.json` and may be overridden 
 
 Integration bearer pre-authentication, verified-token/direct-client, and Admin token-management limits are fixed at 120 per minute in this stage. When the trusted boundary is enabled, the rate-limit client address comes only from the accepted single forwarded hop. Headers from unknown peers are ignored.
 
-Populated runtime or example configuration is rejected by `node scripts/check-cloud-security.mjs`. Local secret files are outside that scan only when they are both ignored and untracked; force-tracked ignored files are scanned.
+Populated runtime or example configuration is rejected by `node scripts/check-cloud-security.mjs`. It enumerates every tracked text file, recognizes JSON, YAML, dotenv/INI/TOML/property, XML and Compose fallback assignments in configuration paths, and scans canonical/raw encoded integration tokens in all text paths. Pure variable references and documentation names stay allowed. Local secret files are outside that scan only when they are both ignored and untracked; force-tracked ignored files are scanned.
+
+Before normal Cloud creation or startup, run `node scripts/preflight-cloud-runtime.mjs --compose-env infra/compose/.env.cloud --runtime-env infra/compose/cloud-runtime.env`. It requires the runtime env at exact mode `0600`, matching configured paths, the exact UID/GID owner, a mode-`0700` readable/writable ring with private key files, and a private regular certificate. Compose independently marks the runtime env as required and uses long bind syntax with `create_host_path: false`, so missing paths cannot be replaced with empty Docker-created directories or files.
