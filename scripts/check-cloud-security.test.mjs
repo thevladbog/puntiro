@@ -412,6 +412,41 @@ test('detects double-base64 and folded multiline encodings of integration tokens
   assert.doesNotMatch(JSON.stringify(errors), /pnt_test_U|cG50X3Rlc3Q/);
 });
 
+test('detects whitespace-wrapped base64 tokens at every bounded chunk width without prose false positives', async t => {
+  const raw = `pnt_test_${'W'.repeat(22)}.${'X'.repeat(43)}`;
+  const encoded = Buffer.from(raw).toString('base64');
+  const separators = new Map([
+    ['space', ' '],
+    ['tab', '\t'],
+    ['lf', '\n'],
+    ['crlf', '\r\n'],
+  ]);
+  const overrides = {
+    'noise/ordinary-prose.txt': `This ordinary prose contains words, numbers 12345678, and short base64-like fragments QWxhZGRpbjpvcGVuIHNlc2FtZQ== without a Puntiro token.\n`,
+    'noise/binary.bin': Buffer.from([0x00, 0xff, 0x10, 0x20, 0x41, 0x42, 0x43]),
+  };
+  const expected = [];
+
+  for (const [separatorName, separator] of separators) {
+    for (let width = 1; width <= 15; width += 1) {
+      const relativePath = `probes/${separatorName}/width-${String(width).padStart(2, '0')}.txt`;
+      overrides[relativePath] = encoded.match(new RegExp(`.{1,${width}}`, 'g')).join(separator);
+      expected.push(`${relativePath} must not contain an integration token`);
+    }
+  }
+  const recursivePath = 'probes/recursive/double-base64-spaced.txt';
+  const twiceEncoded = Buffer.from(encoded).toString('base64');
+  overrides[recursivePath] = twiceEncoded.match(/.{1,8}/g).join(' \t');
+  expected.push(`${recursivePath} must not contain an integration token`);
+
+  const fixture = await createCloudFixture(t, overrides);
+  const errors = await validateCloudSecurity(fixture);
+  const tokenErrors = errors.filter(error => error.endsWith('must not contain an integration token'));
+
+  assert.deepEqual(tokenErrors, expected.sort());
+  assert.doesNotMatch(JSON.stringify(errors), /pnt_test_W|cG50X3Rlc3Q/);
+});
+
 test('allows documentation names blank values and pure environment references without fallbacks', async t => {
   const fixture = await createCloudFixture(t, {
     'docs/reference/names.md': '`POSTGRES_PASSWORD`, `SERVICE_API_KEY`, and `ConnectionStrings__Puntiro` are variable names.\nAuthorization: Bearer pnt_live_<public-id>.<secret>\n',

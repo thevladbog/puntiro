@@ -60,8 +60,11 @@ function enablesBodyLogging(content) {
 const integrationTokenPattern = /pnt_(?:live|test)_[A-Za-z0-9_-]{16,32}\.[A-Za-z0-9+/_-]{32,64}={0,2}/;
 
 function decodedContainsIntegrationToken(candidate, depth = 0) {
-  if (depth >= 3 || candidate.length < 32 || candidate.length > 512) return false;
-  const normalized = candidate.replaceAll('-', '+').replaceAll('_', '/');
+  if (depth >= 3) return false;
+  const compact = candidate.replace(/[ \t\r\n]/g, '');
+  if (compact.length < 32 || compact.length > 512 ||
+      !/^[A-Za-z0-9+/_-]+={0,2}$/.test(compact)) return false;
+  const normalized = compact.replaceAll('-', '+').replaceAll('_', '/');
   try {
     const decoded = Buffer.from(normalized, 'base64');
     if (decoded.length < 24 || decoded.length > 384 ||
@@ -77,6 +80,35 @@ function decodedContainsIntegrationToken(candidate, depth = 0) {
   }
 }
 
+function containsWhitespaceEncodedIntegrationToken(content) {
+  const isBase64Character = character =>
+    character !== undefined && /[A-Za-z0-9+/_-]/.test(character);
+  const isAllowedWhitespace = character =>
+    character === ' ' || character === '\t' || character === '\r' || character === '\n';
+
+  for (let start = 0; start < content.length; start += 1) {
+    if (!isBase64Character(content[start])) continue;
+
+    let previous = start - 1;
+    while (previous >= 0 && isAllowedWhitespace(content[previous])) previous -= 1;
+    if (previous >= 0 && isBase64Character(content[previous])) continue;
+
+    let candidate = '';
+    const limit = Math.min(content.length, start + 2048);
+    for (let end = start; end < limit; end += 1) {
+      const character = content[end];
+      if (isBase64Character(character)) {
+        candidate += character;
+        if (candidate.length > 512) break;
+        if (decodedContainsIntegrationToken(candidate)) return true;
+        continue;
+      }
+      if (!isAllowedWhitespace(character)) break;
+    }
+  }
+  return false;
+}
+
 function containsIntegrationToken(content) {
   if (integrationTokenPattern.test(content)) return true;
   const encodedCandidates = content.match(/(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{32,512}={0,2}(?![A-Za-z0-9+/_-])/g) ?? [];
@@ -90,7 +122,7 @@ function containsIntegrationToken(content) {
     const joined = candidate.replace(/\s/g, '');
     if (decodedContainsIntegrationToken(joined)) return true;
   }
-  return false;
+  return containsWhitespaceEncodedIntegrationToken(content);
 }
 
 async function repositoryFiles(root, errors) {
