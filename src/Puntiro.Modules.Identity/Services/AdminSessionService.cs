@@ -1,4 +1,3 @@
-using System.Data;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Puntiro.Modules.Identity.Contracts;
@@ -23,9 +22,35 @@ internal sealed class AdminSessionService(
         ArgumentNullException.ThrowIfNull(auditContext);
         AdminUser.EnsureId(identity.UserId, nameof(identity));
         AdminUser.EnsureId(organizationId, nameof(organizationId));
-        await using var transaction = await context.Database.BeginTransactionAsync(
-            IsolationLevel.ReadCommitted,
+        using var token = tokenCodec.Issue();
+        var sessionId = Guid.CreateVersion7();
+        var operationEventId = Guid.CreateVersion7();
+        var principal = await IdentityExecutionStrategy.ExecuteInTransactionAsync(
+            context,
+            retryToken => CreateAttemptAsync(
+                identity,
+                organizationId,
+                auditContext,
+                token,
+                sessionId,
+                operationEventId,
+                retryToken),
+            retryToken => context.SecurityEvents.AsNoTracking().AnyAsync(
+                item => item.Id == operationEventId,
+                retryToken),
             cancellationToken);
+        return new IssuedAdminSession(principal, token.TakeRawToken());
+    }
+
+    private async Task<AdminSessionPrincipal> CreateAttemptAsync(
+        VerifiedIdentity identity,
+        Guid organizationId,
+        IdentityAuditContext auditContext,
+        IssuedSessionToken token,
+        Guid sessionId,
+        Guid operationEventId,
+        CancellationToken cancellationToken)
+    {
         await LockUserAsync(identity.UserId, cancellationToken);
         var user = await context.AdminUsers.SingleOrDefaultAsync(
             item => item.Id == identity.UserId,
@@ -42,11 +67,10 @@ internal sealed class AdminSessionService(
             throw new InvalidOperationException("An active admin user is required to create a session.");
         }
 
-        using var token = tokenCodec.Issue();
         var now = timeProvider.GetUtcNow();
         var absolute = now + SessionExpiryPolicy.AbsoluteLifetime;
         var session = new AdminSession(
-            Guid.CreateVersion7(),
+            sessionId,
             token.PublicId,
             token.Verifier,
             token.KeyVersion,
@@ -59,6 +83,7 @@ internal sealed class AdminSessionService(
             identity.Factor == VerifiedFactor.Totp ? identity.VerifiedAt : null);
         context.Sessions.Add(session);
         context.SecurityEvents.Add(Event(
+            operationEventId,
             identity.UserId,
             auditContext.ActorUserId ?? identity.UserId,
             organizationId,
@@ -69,8 +94,7 @@ internal sealed class AdminSessionService(
             identity.Factor == VerifiedFactor.Totp ? "totp_login" : "recovery_login",
             now));
         await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return new IssuedAdminSession(Principal(session, user.DisplayEmail), token.TakeRawToken());
+        return Principal(session, user.DisplayEmail);
     }
 
     public async Task<AdminSessionPrincipal?> ValidateAsync(
@@ -92,16 +116,26 @@ internal sealed class AdminSessionService(
             return null;
         }
 
-        await using var transaction = await context.Database.BeginTransactionAsync(
-            IsolationLevel.ReadCommitted,
+        return await IdentityExecutionStrategy.ExecuteInTransactionAsync(
+            context,
+            token => ValidateAttemptAsync(presentedToken, publicId, userId.Value, token),
+            verifySucceeded: null,
             cancellationToken);
-        await LockUserAsync(userId.Value, cancellationToken);
+    }
+
+    private async Task<AdminSessionPrincipal?> ValidateAttemptAsync(
+        string presentedToken,
+        Guid publicId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await LockUserAsync(userId, cancellationToken);
         await LockSessionAsync(publicId, cancellationToken);
         var session = await context.Sessions.SingleOrDefaultAsync(
             item => item.PublicId == publicId,
             cancellationToken);
         var user = await context.AdminUsers.SingleOrDefaultAsync(
-            item => item.Id == userId.Value,
+            item => item.Id == userId,
             cancellationToken);
         if (session is not null)
         {
@@ -118,7 +152,6 @@ internal sealed class AdminSessionService(
             session.AuthenticationEpoch != user.AuthenticationEpoch ||
             !tokenCodec.Verify(presentedToken, session.PublicId, session.KeyVersion, session.Verifier))
         {
-            await transaction.CommitAsync(cancellationToken);
             return null;
         }
 
@@ -129,7 +162,6 @@ internal sealed class AdminSessionService(
                 session.AbsoluteExpiresAtUtc,
                 session.RevokedAtUtc))
         {
-            await transaction.CommitAsync(cancellationToken);
             return null;
         }
 
@@ -139,7 +171,6 @@ internal sealed class AdminSessionService(
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        await transaction.CommitAsync(cancellationToken);
         return Principal(session, user.DisplayEmail);
     }
 
@@ -173,15 +204,36 @@ internal sealed class AdminSessionService(
             return null;
         }
 
-        await using var transaction = await context.Database.BeginTransactionAsync(
-            IsolationLevel.ReadCommitted,
+        var operationEventId = Guid.CreateVersion7();
+        return await IdentityExecutionStrategy.ExecuteInTransactionAsync(
+            context,
+            token => RecordStepUpAttemptAsync(
+                sessionId,
+                userId.Value,
+                verifiedAtUtc,
+                auditContext,
+                operationEventId,
+                token),
+            token => context.SecurityEvents.AsNoTracking().AnyAsync(
+                item => item.Id == operationEventId,
+                token),
             cancellationToken);
-        await LockUserAsync(userId.Value, cancellationToken);
+    }
+
+    private async Task<AdminSessionPrincipal?> RecordStepUpAttemptAsync(
+        Guid sessionId,
+        Guid userId,
+        DateTimeOffset verifiedAtUtc,
+        IdentityAuditContext auditContext,
+        Guid operationEventId,
+        CancellationToken cancellationToken)
+    {
+        await LockUserAsync(userId, cancellationToken);
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT id FROM identity.sessions WHERE id = {sessionId} FOR UPDATE",
             cancellationToken);
         var user = await context.AdminUsers.SingleOrDefaultAsync(
-            item => item.Id == userId.Value,
+            item => item.Id == userId,
             cancellationToken);
         var session = await context.Sessions.SingleOrDefaultAsync(
             item => item.Id == sessionId,
@@ -208,12 +260,12 @@ internal sealed class AdminSessionService(
                 session.AbsoluteExpiresAtUtc,
                 session.RevokedAtUtc))
         {
-            await transaction.CommitAsync(cancellationToken);
             return null;
         }
 
         session.RecordStepUp(verifiedAtUtc);
         context.SecurityEvents.Add(Event(
+            operationEventId,
             user.Id,
             user.Id,
             session.ActiveOrganizationId,
@@ -224,7 +276,6 @@ internal sealed class AdminSessionService(
             "totp_accepted",
             now));
         await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         return Principal(session, user.DisplayEmail);
     }
 
@@ -237,9 +288,32 @@ internal sealed class AdminSessionService(
         AdminUser.EnsureId(sessionId, nameof(sessionId));
         ArgumentNullException.ThrowIfNull(auditContext);
         var safeReason = ValidateReason(reason);
-        await using var transaction = await context.Database.BeginTransactionAsync(
-            IsolationLevel.ReadCommitted,
+        var operationEventId = Guid.CreateVersion7();
+        await IdentityExecutionStrategy.ExecuteInTransactionAsync(
+            context,
+            async token =>
+            {
+                await RevokeAttemptAsync(
+                    sessionId,
+                    safeReason,
+                    auditContext,
+                    operationEventId,
+                    token);
+                return true;
+            },
+            token => context.SecurityEvents.AsNoTracking().AnyAsync(
+                item => item.Id == operationEventId,
+                token),
             cancellationToken);
+    }
+
+    private async Task RevokeAttemptAsync(
+        Guid sessionId,
+        string safeReason,
+        IdentityAuditContext auditContext,
+        Guid operationEventId,
+        CancellationToken cancellationToken)
+    {
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT id FROM identity.sessions WHERE id = {sessionId} FOR UPDATE",
             cancellationToken);
@@ -252,6 +326,7 @@ internal sealed class AdminSessionService(
             var now = timeProvider.GetUtcNow();
             session.Revoke(now, safeReason);
             context.SecurityEvents.Add(Event(
+                operationEventId,
                 session.UserId,
                 auditContext.ActorUserId ?? session.UserId,
                 session.ActiveOrganizationId,
@@ -263,8 +338,6 @@ internal sealed class AdminSessionService(
                 now));
             await context.SaveChangesAsync(cancellationToken);
         }
-
-        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task RevokeAllForUserAsync(
@@ -276,9 +349,32 @@ internal sealed class AdminSessionService(
         AdminUser.EnsureId(userId, nameof(userId));
         ArgumentNullException.ThrowIfNull(auditContext);
         var safeReason = ValidateReason(reason);
-        await using var transaction = await context.Database.BeginTransactionAsync(
-            IsolationLevel.ReadCommitted,
+        var operationEventId = Guid.CreateVersion7();
+        await IdentityExecutionStrategy.ExecuteInTransactionAsync(
+            context,
+            async token =>
+            {
+                await RevokeAllAttemptAsync(
+                    userId,
+                    safeReason,
+                    auditContext,
+                    operationEventId,
+                    token);
+                return true;
+            },
+            token => context.SecurityEvents.AsNoTracking().AnyAsync(
+                item => item.Id == operationEventId,
+                token),
             cancellationToken);
+    }
+
+    private async Task RevokeAllAttemptAsync(
+        Guid userId,
+        string safeReason,
+        IdentityAuditContext auditContext,
+        Guid operationEventId,
+        CancellationToken cancellationToken)
+    {
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT id FROM identity.admin_users WHERE id = {userId} FOR UPDATE",
             cancellationToken);
@@ -297,6 +393,7 @@ internal sealed class AdminSessionService(
             }
 
             context.SecurityEvents.Add(Event(
+                operationEventId,
                 userId,
                 auditContext.ActorUserId ?? userId,
                 null,
@@ -308,8 +405,6 @@ internal sealed class AdminSessionService(
                 now));
             await context.SaveChangesAsync(cancellationToken);
         }
-
-        await transaction.CommitAsync(cancellationToken);
     }
 
     private Task<int> LockSessionAsync(Guid publicId, CancellationToken cancellationToken) =>
@@ -345,6 +440,7 @@ internal sealed class AdminSessionService(
     }
 
     private static IdentitySecurityEvent Event(
+        Guid id,
         Guid? userId,
         Guid? actorUserId,
         Guid? organizationId,
@@ -355,7 +451,7 @@ internal sealed class AdminSessionService(
         string reasonCode,
         DateTimeOffset now) =>
         new(
-            Guid.CreateVersion7(),
+            id,
             userId,
             actorUserId,
             organizationId,

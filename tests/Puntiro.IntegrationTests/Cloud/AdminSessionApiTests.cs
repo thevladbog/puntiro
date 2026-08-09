@@ -108,6 +108,7 @@ public sealed class AdminSessionApiTests(CloudWebApplicationFactory factory)
             BaseAddress = new Uri("https://localhost"),
             HandleCookies = false
         });
+        duplicateClient.DefaultRequestHeaders.Add("Origin", "https://localhost");
         var duplicateLogin = await duplicateClient.PostAsJsonAsync("/api/admin/auth/login", new
         {
             email = factory.OwnerEmail,

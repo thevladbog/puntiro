@@ -87,6 +87,8 @@ TOTP login copies the factor verification time to `second_factor_verified_at`. R
 
 `IAdminSessionService` creates, validates, records a successful current-session TOTP step-up, revokes one, or revokes every user session. `AdminSessionPrincipal` receives its user metadata and organization identifier only from durable verified rows. Callers must not treat an organization ID from request input as authorization; the Cloud host must recheck Tenancy.
 
+Authentication and session transaction units execute through the configured EF execution strategy. Each retry clears tracked mutable entities, recreates the attempt inside one transaction and verifies ambiguous commits through a stable security-event identifier where the operation mutates durable state. TOTP/recovery use, session issuance, step-up and revocation therefore do not duplicate events or sessions after a transient replay.
+
 Every provisioning, authentication, factor-change, session-create, and session-revoke operation that emits an event requires an `IdentityAuditContext`. Its trace ID is 1–128 characters and accepts only ASCII letters, digits, `.`, `_`, `:`, and `-`; an optional actor cannot be the empty GUID. Unauthenticated login uses a null caller actor and derives the actor only after successful authentication. Self-service operations derive the subject as actor when no actor is supplied; administrative suspension/revoke may supply the already-authorized actor. The caller must pass only an opaque correlation ID, never an email, network address, credential, code, token, or arbitrary request text. Session validation deliberately accepts no audit context because it emits no per-request event and must not create an attacker-controlled durable event stream.
 
 ## Key configuration and migrations

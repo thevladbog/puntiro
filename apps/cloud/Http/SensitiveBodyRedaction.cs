@@ -73,9 +73,8 @@ internal sealed class AdminCsrfMiddleware(RequestDelegate next)
             !HttpMethods.IsGet(context.Request.Method) &&
             !HttpMethods.IsHead(context.Request.Method) &&
             !HttpMethods.IsOptions(context.Request.Method) &&
-            !HttpMethods.IsTrace(context.Request.Method) &&
-            !context.Request.Path.Equals("/api/admin/auth/login", StringComparison.Ordinal);
-        if (!isAdminMutation || context.User.Identity?.IsAuthenticated != true)
+            !HttpMethods.IsTrace(context.Request.Method);
+        if (!isAdminMutation)
         {
             await next(context);
             return;
@@ -89,6 +88,15 @@ internal sealed class AdminCsrfMiddleware(RequestDelegate next)
                 StatusCodes.Status403Forbidden,
                 "auth.csrf_invalid",
                 "The request origin or antiforgery token is invalid.");
+            return;
+        }
+
+        var isLogin = context.Request.Path.Equals(
+            "/api/admin/auth/login",
+            StringComparison.Ordinal);
+        if (isLogin || context.User.Identity?.IsAuthenticated != true)
+        {
+            await next(context);
             return;
         }
 

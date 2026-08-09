@@ -20,8 +20,27 @@ public sealed class AuthenticationOperationTransformer : IOpenApiOperationTransf
             {
                 [new OpenApiSecuritySchemeReference("AdminSession", context.Document, null)] = []
             });
+
+            if (IsUnsafe(context.Description.HttpMethod))
+            {
+                operation.Parameters ??= [];
+                operation.Parameters.Add(new OpenApiParameter
+                {
+                    Name = "X-Puntiro-CSRF",
+                    In = ParameterLocation.Header,
+                    Required = true,
+                    Description = "Antiforgery token issued by GET /api/admin/auth/session.",
+                    Schema = new OpenApiSchema { Type = JsonSchemaType.String }
+                });
+            }
         }
 
         return Task.CompletedTask;
     }
+
+    private static bool IsUnsafe(string? method) =>
+        !string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(method, "TRACE", StringComparison.OrdinalIgnoreCase);
 }

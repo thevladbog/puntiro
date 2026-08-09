@@ -75,6 +75,8 @@ Revoke locks and selects by both organization and token ID. A missing token and 
 
 Runtime composition calls `AddIntegrationsModule` with a PostgreSQL connection string, validated `IntegrationKeyOptions` and optional `TimeProvider`. Each integration HMAC key is exactly 32 bytes, versions are bounded ASCII identifiers, the current version must be present, and new rows always use it. Retain every historical version referenced by a stored row until those credentials are revoked and no longer need authentication. Integration keys must be generated independently from Identity session/recovery, Data Protection and rate-limit keys; the deployment composition must reject cross-purpose reuse.
 
+`IIntegrationTokenReadinessService` performs a read-only distinct-version query over every unrevoked token and fails closed when any referenced HMAC version is absent. It returns only a generic readiness boolean and never token identifiers, verifier material, scopes or organization data.
+
 The design-time factory reads only `ConnectionStrings__Puntiro`; it has no fallback credential. Production startup does not apply migrations. Restore the pinned tool and create/review migrations with an explicitly supplied development connection:
 
 ```bash

@@ -47,6 +47,7 @@ public static class IntegrationsModule
             IIntegrationTokenTransactionFactory,
             EfIntegrationTokenTransactionFactory>();
         services.AddScoped<IIntegrationTokenService, IntegrationTokenService>();
+        services.AddScoped<IIntegrationTokenReadinessService, IntegrationTokenReadinessService>();
         return services;
     }
 }

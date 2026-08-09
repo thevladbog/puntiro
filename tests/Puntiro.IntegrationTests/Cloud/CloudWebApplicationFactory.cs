@@ -1,15 +1,18 @@
 extern alias cloud;
 
+using System.Data.Common;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Puntiro.IntegrationTests.Identity;
 using Puntiro.IntegrationTests.Infrastructure;
 using Puntiro.Modules.Identity.Contracts;
@@ -30,6 +33,11 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         $"puntiro-cloud-tests-{Guid.NewGuid():N}");
     private readonly string _certificatePassword = Convert.ToBase64String(
         RandomNumberGenerator.GetBytes(32));
+    private readonly string _sessionKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    private readonly string _recoveryKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    private readonly string _integrationKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    private readonly string _retainedIntegrationKey = Convert.ToBase64String(
+        RandomNumberGenerator.GetBytes(32));
     private byte[] _totpSecret = [];
     private readonly CapturingLoggerProvider _logs = new();
 
@@ -48,12 +56,25 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
     public AdjustableTimeProvider Time { get; }
     public IReadOnlyList<string> Logs => _logs.Messages;
 
-    public HttpClient CreateSecureClient() => CreateClient(new WebApplicationFactoryClientOptions
+    public HttpClient CreateSecureClient(bool includeOrigin = true)
     {
-        BaseAddress = new Uri("https://localhost"),
-        HandleCookies = true,
-        AllowAutoRedirect = false
-    });
+        var client = CreateClient(SecureClientOptions());
+        if (includeOrigin)
+        {
+            client.DefaultRequestHeaders.Add("Origin", "https://localhost");
+        }
+
+        return client;
+    }
+
+    internal ProductionCloudWebApplicationFactory CreateProductionFactory(
+        IInterceptor? identityInterceptor = null,
+        bool includeRetainedIntegrationKey = true) =>
+        new(
+            Settings(includeRetainedIntegrationKey),
+            Time,
+            _logs,
+            identityInterceptor);
 
     public string CurrentTotp() => IdentityTotp.Generate(
         _totpSecret,
@@ -72,36 +93,71 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
         Directory.CreateDirectory(keyPath);
         var certificatePath = Path.Combine(_temporaryRoot, "key-protection.pfx");
         CreateCertificate(certificatePath, _certificatePassword);
-        var sessionKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        var recoveryKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        var integrationKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        ConfigureHost(builder, "Testing", Settings(includeRetainedIntegrationKey: true), Time, _logs);
+    }
 
-        builder.UseEnvironment("Testing");
-        foreach (var setting in new Dictionary<string, string>
+    internal static WebApplicationFactoryClientOptions SecureClientOptions() => new()
+    {
+        BaseAddress = new Uri("https://localhost"),
+        HandleCookies = true,
+        AllowAutoRedirect = false
+    };
+
+    private CloudHostSettings Settings(bool includeRetainedIntegrationKey) => new(
+        _database.ConnectionString,
+        Path.Combine(_temporaryRoot, "keys"),
+        Path.Combine(_temporaryRoot, "key-protection.pfx"),
+        _certificatePassword,
+        _sessionKey,
+        _recoveryKey,
+        _integrationKey,
+        includeRetainedIntegrationKey ? _retainedIntegrationKey : null);
+
+    internal static void ConfigureHost(
+        IWebHostBuilder builder,
+        string environment,
+        CloudHostSettings settings,
+        TimeProvider time,
+        ILoggerProvider logs,
+        IInterceptor? identityInterceptor = null)
+    {
+        builder.UseEnvironment(environment);
+        var values = new Dictionary<string, string>
                  {
-                     ["ConnectionStrings:Puntiro"] = _database.ConnectionString,
+                     ["ConnectionStrings:Puntiro"] = settings.ConnectionString,
                      ["Puntiro:Admin:AllowedOrigin"] = "https://localhost",
-                     ["Puntiro:Security:DataProtectionKeysPath"] = keyPath,
-                     ["Puntiro:Security:DataProtectionCertificatePath"] = certificatePath,
-                     ["Puntiro:Security:DataProtectionCertificatePassword"] = _certificatePassword,
+                     ["Puntiro:Security:DataProtectionKeysPath"] = settings.KeyPath,
+                     ["Puntiro:Security:DataProtectionCertificatePath"] = settings.CertificatePath,
+                     ["Puntiro:Security:DataProtectionCertificatePassword"] = settings.CertificatePassword,
                      ["Puntiro:Security:SessionHmac:CurrentVersion"] = "v1",
-                     ["Puntiro:Security:SessionHmac:Keys:v1"] = sessionKey,
+                     ["Puntiro:Security:SessionHmac:Keys:v1"] = settings.SessionKey,
                      ["Puntiro:Security:RecoveryHmac:CurrentVersion"] = "v1",
-                     ["Puntiro:Security:RecoveryHmac:Keys:v1"] = recoveryKey,
+                     ["Puntiro:Security:RecoveryHmac:Keys:v1"] = settings.RecoveryKey,
                      ["Puntiro:Security:IntegrationHmac:CurrentVersion"] = "v1",
-                     ["Puntiro:Security:IntegrationHmac:Keys:v1"] = integrationKey,
+                     ["Puntiro:Security:IntegrationHmac:Keys:v1"] = settings.IntegrationKey,
                      ["Puntiro:Security:LoginIpLimit"] = "3",
                      ["Puntiro:Security:LoginAccountLimit"] = "3",
                      ["Puntiro:Security:StepUpSessionLimit"] = "2"
-                 })
+                 };
+        if (settings.RetainedIntegrationKey is not null)
+        {
+            values["Puntiro:Security:IntegrationHmac:Keys:v0"] = settings.RetainedIntegrationKey;
+        }
+
+        foreach (var setting in values)
         {
             builder.UseSetting(setting.Key, setting.Value);
         }
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<TimeProvider>();
-            services.AddSingleton<TimeProvider>(Time);
-            services.AddLogging(logging => logging.AddProvider(_logs));
+            services.AddSingleton(time);
+            services.AddLogging(logging => logging.AddProvider(logs));
+            if (identityInterceptor is not null)
+            {
+                services.AddDbContext<IdentityDbContext>(options =>
+                    options.AddInterceptors(identityInterceptor));
+            }
         });
     }
 
@@ -188,6 +244,78 @@ public sealed class CloudWebApplicationFactory : WebApplicationFactory<cloud::Pr
             DateTimeOffset.UtcNow.AddMinutes(-5),
             DateTimeOffset.UtcNow.AddDays(2));
         File.WriteAllBytes(path, certificate.Export(X509ContentType.Pfx, password));
+    }
+}
+
+internal sealed class CloudHostSettings(
+    string connectionString,
+    string keyPath,
+    string certificatePath,
+    string certificatePassword,
+    string sessionKey,
+    string recoveryKey,
+    string integrationKey,
+    string? retainedIntegrationKey)
+{
+    internal string ConnectionString { get; } = connectionString;
+    internal string KeyPath { get; } = keyPath;
+    internal string CertificatePath { get; } = certificatePath;
+    internal string CertificatePassword { get; } = certificatePassword;
+    internal string SessionKey { get; } = sessionKey;
+    internal string RecoveryKey { get; } = recoveryKey;
+    internal string IntegrationKey { get; } = integrationKey;
+    internal string? RetainedIntegrationKey { get; } = retainedIntegrationKey;
+
+    public override string ToString() => nameof(CloudHostSettings);
+}
+
+internal sealed class ProductionCloudWebApplicationFactory(
+    CloudHostSettings settings,
+    TimeProvider time,
+    ILoggerProvider logs,
+    IInterceptor? identityInterceptor)
+    : WebApplicationFactory<cloud::Program>
+{
+    public HttpClient CreateSecureClient()
+    {
+        var client = CreateClient(CloudWebApplicationFactory.SecureClientOptions());
+        client.DefaultRequestHeaders.Add("Origin", "https://localhost");
+        return client;
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+        CloudWebApplicationFactory.ConfigureHost(
+            builder,
+            "Production",
+            settings,
+            time,
+            logs,
+            identityInterceptor);
+}
+
+internal sealed class FailFirstIdentitySecurityEventCommandInterceptor : DbCommandInterceptor
+{
+    private int _failed;
+
+    public int FailureCount => Volatile.Read(ref _failed);
+
+    public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<DbDataReader> result,
+        CancellationToken cancellationToken = default)
+    {
+        if (command.CommandText.Contains("identity.security_events", StringComparison.Ordinal) &&
+            Interlocked.CompareExchange(ref _failed, 1, 0) == 0)
+        {
+            throw new PostgresException(
+                "Injected transient serialization failure.",
+                "ERROR",
+                "ERROR",
+                PostgresErrorCodes.SerializationFailure);
+        }
+
+        return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
     }
 }
 

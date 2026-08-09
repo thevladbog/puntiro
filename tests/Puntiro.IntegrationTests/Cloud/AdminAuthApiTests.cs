@@ -10,6 +10,46 @@ public sealed class AdminAuthApiTests(CloudWebApplicationFactory factory)
     : IClassFixture<CloudWebApplicationFactory>
 {
     [Fact]
+    public async Task Login_requires_one_exact_configured_https_origin()
+    {
+        factory.Time.Advance(TimeSpan.FromSeconds(60));
+        using var client = factory.CreateSecureClient(includeOrigin: false);
+        var payload = new
+        {
+            email = "missing@example.test",
+            password = "not-the-password",
+            totpCode = "000000"
+        };
+
+        var missing = await client.PostAsJsonAsync(
+            "/api/admin/auth/login",
+            payload,
+            TestContext.Current.CancellationToken);
+        using var wrongRequest = new HttpRequestMessage(HttpMethod.Post, "/api/admin/auth/login")
+        {
+            Content = JsonContent.Create(payload)
+        };
+        wrongRequest.Headers.Add("Origin", "https://wrong.example");
+        var wrong = await client.SendAsync(wrongRequest, TestContext.Current.CancellationToken);
+        using var multipleRequest = new HttpRequestMessage(HttpMethod.Post, "/api/admin/auth/login")
+        {
+            Content = JsonContent.Create(payload)
+        };
+        multipleRequest.Headers.TryAddWithoutValidation(
+            "Origin",
+            ["https://localhost", "https://wrong.example"]);
+        var multiple = await client.SendAsync(multipleRequest, TestContext.Current.CancellationToken);
+
+        foreach (var response in new[] { missing, wrong, multiple })
+        {
+            var problem = await response.Content.ReadFromJsonAsync<ApiProblemResponse>(
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal("auth.csrf_invalid", problem!.Code);
+        }
+    }
+
+    [Fact]
     public async Task Login_sets_only_the_approved_cookie_and_keeps_failures_generic()
     {
         factory.Time.Advance(TimeSpan.FromSeconds(60));

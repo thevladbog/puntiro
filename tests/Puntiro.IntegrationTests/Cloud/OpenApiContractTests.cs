@@ -44,5 +44,26 @@ public sealed class OpenApiContractTests(CloudWebApplicationFactory factory)
                 .EnumerateObject()
                 .Single()
                 .Name);
+        foreach (var operation in new[]
+                 {
+                     document.RootElement.GetProperty("paths")
+                         .GetProperty("/api/admin/auth/logout")
+                         .GetProperty("post"),
+                     document.RootElement.GetProperty("paths")
+                         .GetProperty("/api/admin/auth/step-up")
+                         .GetProperty("post")
+                 })
+        {
+            var parameter = Assert.Single(
+                operation.GetProperty("parameters").EnumerateArray(),
+                item => item.GetProperty("name").GetString() == "X-Puntiro-CSRF");
+            Assert.Equal("header", parameter.GetProperty("in").GetString());
+            Assert.True(parameter.GetProperty("required").GetBoolean());
+            Assert.Equal("string", parameter.GetProperty("schema").GetProperty("type").GetString());
+            Assert.Contains(
+                "antiforgery",
+                parameter.GetProperty("description").GetString(),
+                StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

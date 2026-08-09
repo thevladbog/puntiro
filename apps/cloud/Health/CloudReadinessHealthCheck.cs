@@ -6,6 +6,7 @@ using Puntiro.Cloud.Configuration;
 using Puntiro.Modules.Identity.Contracts;
 using Puntiro.Modules.Identity.Persistence;
 using Puntiro.Modules.Integrations.Persistence;
+using Puntiro.Modules.Integrations.Contracts;
 using Puntiro.Modules.Tenancy.Persistence;
 
 namespace Puntiro.Cloud.Health;
@@ -15,6 +16,7 @@ public sealed class CloudReadinessHealthCheck(
     IdentityDbContext identity,
     IntegrationsDbContext integrations,
     IIdentityProvisioningReadinessService identityReadiness,
+    IIntegrationTokenReadinessService integrationReadiness,
     IDataProtectionProvider dataProtection,
     PuntiroCloudOptions options) : IHealthCheck
 {
@@ -54,6 +56,11 @@ public sealed class CloudReadinessHealthCheck(
             if (!await identityReadiness.IsReadyForTrustedProvisioningAsync(cancellationToken))
             {
                 return HealthCheckResult.Unhealthy("Identity key material is unavailable.");
+            }
+
+            if (!await integrationReadiness.IsReadyAsync(cancellationToken))
+            {
+                return HealthCheckResult.Unhealthy("Integration key material is unavailable.");
             }
 
             if (!CanUseCurrentHmac(options.Security.SessionHmac) ||
