@@ -9,22 +9,43 @@
 ## Technical Architecture
 
 - [Approved technical architecture](superpowers/specs/2026-08-08-puntiro-technical-architecture-design.md)
+- [Cloud identity and tenancy design](superpowers/specs/2026-08-08-puntiro-cloud-identity-tenancy-design.md)
 
 ## Architecture Decisions
 
 - [ADR 0001: Modular monolith and Windows Agent](adr/0001-modular-monolith-agent.md)
+- [ADR 0002: Effective friend metadata enforcement](adr/0002-effective-friend-metadata-enforcement.md)
+- [ADR 0003: Global identity and credential boundaries](adr/0003-global-identity-and-credentials.md)
+
+## Modules
+
+- [Identity cryptographic primitives](modules/identity.md)
+- [Tenancy](modules/tenancy.md)
+- [Integrations](modules/integrations.md)
+- [Cloud Admin authentication boundary](modules/cloud-admin-auth.md)
 
 ## Runbooks
 
 - [Development bootstrap](runbooks/development-bootstrap.md)
+- [Cloud development and deployment operations](runbooks/cloud-development.md)
+- [First owner provisioning](runbooks/first-owner-provisioning.md)
+- [Owner TOTP recovery](runbooks/owner-totp-recovery.md)
+- [Manual integration-token rotation](runbooks/integration-token-rotation.md)
+
+## References
+
+- [Cloud configuration](reference/cloud-configuration.md)
+- [Cloud authentication API](reference/cloud-authentication-api.md)
 
 ## Engineering Validation
 
 - [Repository foundation validation](engineering/foundation-validation.md)
+- [Cloud identity and tenancy validation](engineering/cloud-identity-validation.md)
 
 ## Implementation Plans
 
 - [Repository foundation](superpowers/plans/2026-08-08-puntiro-repository-foundation.md)
+- [Cloud identity and tenancy](superpowers/plans/2026-08-08-puntiro-cloud-identity-tenancy.md)
 - [Implementation roadmap](superpowers/plans/2026-08-08-puntiro-implementation-roadmap.md)
 
 ## Validation Rule

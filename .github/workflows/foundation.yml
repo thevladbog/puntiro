@@ -28,16 +28,51 @@ jobs:
       - run: corepack prepare pnpm@11.17.0 --activate
       - run: corepack pnpm install --frozen-lockfile
       - run: corepack pnpm check:foundation
-      - run: dotnet restore Puntiro.slnx
-      - run: dotnet build Puntiro.slnx --configuration Release --no-restore
 
   windows-build:
     name: Windows compile
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
-      - run: dotnet restore Puntiro.slnx
+      - run: node scripts/check-dotnet.mjs
+
+  cloud-identity:
+    name: Cloud identity and PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.10-bookworm
+        env:
+          POSTGRES_DB: puntiro_ci
+          POSTGRES_USER: puntiro_ci
+          POSTGRES_PASSWORD: puntiro-ci-fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U puntiro_ci -d puntiro_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PUNTIRO_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=puntiro_ci;Username=puntiro_ci;Password=puntiro-ci-fixture-only;Include Error Detail=false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+      - run: dotnet tool restore
+      - run: dotnet restore Puntiro.slnx --locked-mode
       - run: dotnet build Puntiro.slnx --configuration Release --no-restore
+      - run: dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build
+      - run: dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build
+      - run: node scripts/check-cloud-security.mjs
+      - run: corepack pnpm test:cloud:compose

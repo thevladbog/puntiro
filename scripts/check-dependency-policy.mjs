@@ -142,6 +142,72 @@ function validateNonCentralNuGetPolicy(relativePath, content) {
   return errors;
 }
 
+async function validateDotnetTools(root) {
+  const relativePath = '.config/dotnet-tools.json';
+  const errors = [];
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(path.join(root, relativePath), 'utf8'));
+  } catch {
+    return [`${relativePath} must exist and contain valid JSON`];
+  }
+
+  if (manifest.version !== 1) {
+    errors.push(`${relativePath} version must be 1, received ${manifest.version}`);
+  }
+  if (manifest.isRoot !== true) {
+    errors.push(`${relativePath} isRoot must be true, received ${manifest.isRoot}`);
+  }
+
+  const dotnetEf = manifest.tools?.['dotnet-ef'];
+  if (!dotnetEf) {
+    errors.push(`${relativePath} must define tools.dotnet-ef`);
+    return errors;
+  }
+  if (dotnetEf.version !== '10.0.10') {
+    errors.push(`${relativePath} tools.dotnet-ef.version must be 10.0.10, received ${dotnetEf.version}`);
+  }
+  if (!Array.isArray(dotnetEf.commands) || dotnetEf.commands.length !== 1 || dotnetEf.commands[0] !== 'dotnet-ef') {
+    errors.push(`${relativePath} tools.dotnet-ef.commands must be ["dotnet-ef"]`);
+  }
+
+  return errors;
+}
+
+async function validateSolutionLockfiles(root) {
+  let solution;
+  try {
+    solution = await readFile(path.join(root, 'Puntiro.slnx'), 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+
+  const errors = [];
+  const projectPattern = /<Project\b[^>]*\bPath\s*=\s*(['"])(.*?)\1/gi;
+  for (const match of solution.matchAll(projectPattern)) {
+    const projectPath = match[2].replaceAll('\\', '/');
+    const lockPath = path.posix.join(path.posix.dirname(projectPath), 'packages.lock.json');
+    let lockfile;
+    try {
+      lockfile = JSON.parse(await readFile(path.join(root, lockPath), 'utf8'));
+    } catch {
+      lockfile = undefined;
+    }
+    if (
+      lockfile?.version !== 2
+      || !lockfile.dependencies
+      || typeof lockfile.dependencies !== 'object'
+      || Array.isArray(lockfile.dependencies)
+    ) {
+      errors.push(
+        `${projectPath} must keep a valid sibling packages.lock.json for locked restore`,
+      );
+    }
+  }
+  return errors;
+}
+
 async function nugetPolicyFiles(root, relativeDirectory = '') {
   const directory = path.join(root, relativeDirectory);
   const entries = (await readdir(directory, { withFileTypes: true }))
@@ -220,6 +286,8 @@ export async function validateDependencyPolicy(rootUrl) {
 
   const centralPackages = await readFile(path.join(root, 'Directory.Packages.props'), 'utf8');
   errors.push(...validateCentralNuGetPolicy(centralPackages));
+  errors.push(...await validateDotnetTools(root));
+  errors.push(...await validateSolutionLockfiles(root));
 
   for (const relativePath of await nugetPolicyFiles(root)) {
     if (relativePath === 'Directory.Packages.props') continue;

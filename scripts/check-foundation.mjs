@@ -2,15 +2,61 @@ import { access, readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const projects = [
+const leafProjects = new Set([
   'src/Puntiro.Contracts/Puntiro.Contracts.csproj',
+  'src/Puntiro.Security/Puntiro.Security.csproj',
+]);
+const securityProject = 'src/Puntiro.Security/Puntiro.Security.csproj';
+const moduleProjects = new Set([
+  'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+  'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+  'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+]);
+const cloudModules = new Set(moduleProjects);
+const applicationProjects = new Set([
   'apps/cloud/Puntiro.Cloud.csproj',
   'apps/agent/Puntiro.Agent.csproj',
-  'apps/kiosk-shell/Puntiro.KioskShell.csproj'
+  'apps/kiosk-shell/Puntiro.KioskShell.csproj',
+]);
+const provisioningProject = 'tools/Puntiro.Provisioning/Puntiro.Provisioning.csproj';
+const assemblyPolicyProject = 'tools/Puntiro.AssemblyPolicy/Puntiro.AssemblyPolicy.csproj';
+const canonicalAssemblyPolicyProjectContent = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>
+`;
+const testProjects = new Set([
+  'tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj',
+  'tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj',
+]);
+const requiredTestReferences = new Map([
+  ['tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj', new Set([
+    securityProject,
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+    'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+    provisioningProject,
+  ])],
+  ['tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj', new Set([
+    'apps/cloud/Puntiro.Cloud.csproj',
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+    'src/Puntiro.Modules.Integrations/Puntiro.Modules.Integrations.csproj',
+    provisioningProject,
+  ])],
+]);
+const projects = [
+  ...leafProjects,
+  ...moduleProjects,
+  ...applicationProjects,
+  assemblyPolicyProject,
+  provisioningProject,
+  ...testProjects,
 ];
-
 const projectDirectories = projects.map(project => path.posix.dirname(project));
 const projectSourceExtensions = new Set(['.config', '.cs', '.csproj', '.json', '.props', '.targets', '.xaml', '.xml']);
+const buildOutputDirectories = new Set(['bin', 'obj']);
 const forbidden = ['Microsoft.Data.Sqlite', 'System.Net.Sockets', 'System.Printing', 'Microsoft.Web.WebView2'];
 const uiBoundaryExtensions = new Set([
   '.cjs',
@@ -72,13 +118,18 @@ function sourceWithoutComments(relativePath, content) {
   return withoutXmlComments(content);
 }
 
+function normalizedLineEndings(content) {
+  return content.replaceAll('\r\n', '\n');
+}
+
 async function projectSourceFiles(root, relativeDirectory) {
   const directory = path.join(root, relativeDirectory);
-  const entries = await readdir(directory, { withFileTypes: true });
+  const entries = (await readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name));
   const files = await Promise.all(entries.map(async entry => {
     const relativePath = path.posix.join(relativeDirectory, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === 'bin' || entry.name === 'obj') return [];
+      if (buildOutputDirectories.has(entry.name)) return [];
       return projectSourceFiles(root, relativePath);
     }
     return projectSourceExtensions.has(path.extname(entry.name)) ? [relativePath] : [];
@@ -122,7 +173,6 @@ export async function validateFoundation(rootUrl) {
     await readFile(path.join(root, relativePath), 'utf8')
   ])));
   const solution = await readFile(path.join(root, 'Puntiro.slnx'), 'utf8');
-  const appProjects = projects.filter(relativePath => relativePath.startsWith('apps/'));
   const listedProjects = solutionProjects(solution);
 
   for (const relativePath of projects) {
@@ -131,7 +181,56 @@ export async function validateFoundation(rootUrl) {
     }
   }
 
-  for (const relativePath of appProjects) {
+  for (const relativePath of leafProjects) {
+    const references = projectReferences(relativePath, contents[relativePath]);
+    const projectName = path.posix.basename(relativePath, '.csproj');
+    for (const reference of references) {
+      if (reference.startsWith('apps/')) {
+        errors.push(`${projectName} must not reference application project: ${reference}`);
+      } else {
+        errors.push(`${projectName} must not reference project: ${reference}`);
+      }
+    }
+  }
+
+  for (const relativePath of moduleProjects) {
+    const references = projectReferences(relativePath, contents[relativePath]);
+    if (!references.includes(securityProject)) {
+      errors.push(`${relativePath} must reference required security project: ${securityProject}`);
+    }
+    for (const reference of references) {
+      if (reference === securityProject) continue;
+      if (moduleProjects.has(reference)) {
+        errors.push(`${relativePath} must not reference module: ${reference}`);
+      } else if (reference.startsWith('apps/')) {
+        errors.push(`${relativePath} must not reference application project: ${reference}`);
+      } else {
+        errors.push(`${relativePath} must not reference project: ${reference}`);
+      }
+    }
+  }
+
+  const cloudProject = 'apps/cloud/Puntiro.Cloud.csproj';
+  const cloudReferences = projectReferences(cloudProject, contents[cloudProject]);
+  if (!cloudReferences.includes('src/Puntiro.Contracts/Puntiro.Contracts.csproj')) {
+    errors.push(`${cloudProject} must reference Puntiro.Contracts`);
+  }
+  for (const moduleProject of cloudModules) {
+    if (!cloudReferences.includes(moduleProject)) {
+      errors.push(`${cloudProject} must reference module: ${moduleProject}`);
+    }
+  }
+  for (const reference of cloudReferences) {
+    if (reference === 'src/Puntiro.Contracts/Puntiro.Contracts.csproj' || cloudModules.has(reference)) continue;
+    if (reference.startsWith('apps/')) {
+      errors.push(`${cloudProject} must not reference application project: ${reference}`);
+    } else {
+      errors.push(`${cloudProject} must not reference project: ${reference}`);
+    }
+  }
+
+  for (const relativePath of applicationProjects) {
+    if (relativePath === cloudProject) continue;
     const references = projectReferences(relativePath, contents[relativePath]);
     if (!references.includes('src/Puntiro.Contracts/Puntiro.Contracts.csproj')) {
       errors.push(`${relativePath} must reference Puntiro.Contracts`);
@@ -145,17 +244,50 @@ export async function validateFoundation(rootUrl) {
       }
     }
   }
-  for (const reference of projectReferences(projects[0], contents[projects[0]])) {
-    if (reference.startsWith('apps/')) {
-      errors.push(`Puntiro.Contracts must not reference application project: ${reference}`);
-    } else {
-      errors.push(`Puntiro.Contracts must not reference project: ${reference}`);
+
+  const provisioningReferences = projectReferences(provisioningProject, contents[provisioningProject]);
+  for (const requiredReference of [
+    'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj',
+    'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj',
+  ]) {
+    if (!provisioningReferences.includes(requiredReference)) {
+      errors.push(`${provisioningProject} must reference required module: ${requiredReference}`);
     }
   }
-  if (!withoutXmlComments(contents['apps/cloud/Puntiro.Cloud.csproj']).includes('Microsoft.NET.Sdk.Web')) {
+  for (const reference of provisioningReferences) {
+    if (
+      reference === 'src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj'
+      || reference === 'src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj'
+    ) continue;
+    if (reference.startsWith('apps/')) {
+      errors.push(`${provisioningProject} must not reference application project: ${reference}`);
+    } else {
+      errors.push(`${provisioningProject} must not reference project: ${reference}`);
+    }
+  }
+
+  for (const [relativePath, requiredReferences] of requiredTestReferences) {
+    const references = projectReferences(relativePath, contents[relativePath]);
+    for (const requiredReference of requiredReferences) {
+      if (!references.includes(requiredReference)) {
+        errors.push(`${relativePath} must reference required project: ${requiredReference}`);
+      }
+    }
+    for (const reference of references) {
+      if (!requiredReferences.has(reference)) {
+        errors.push(`${relativePath} must not reference project: ${reference}`);
+      }
+    }
+  }
+
+  if (normalizedLineEndings(contents[assemblyPolicyProject]) !== canonicalAssemblyPolicyProjectContent) {
+    errors.push(`${assemblyPolicyProject} must remain the canonical BCL-only verifier project`);
+  }
+
+  if (!withoutXmlComments(contents[cloudProject]).includes('Microsoft.NET.Sdk.Web')) {
     errors.push('Cloud must use Microsoft.NET.Sdk.Web');
   }
-  for (const relativePath of projects.filter(item => item !== 'apps/cloud/Puntiro.Cloud.csproj')) {
+  for (const relativePath of projects.filter(item => item !== cloudProject)) {
     if (withoutXmlComments(contents[relativePath]).includes('Microsoft.NET.Sdk.Web')) {
       errors.push(`${relativePath} must not use Microsoft.NET.Sdk.Web`);
     }

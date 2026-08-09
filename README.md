@@ -2,13 +2,14 @@
 
 Puntiro is a shipment-label platform. This design-system workspace is the local source of truth for Puntiro product UI: design tokens, accessible React components, kiosk patterns, composition rules, bilingual documentation, and executable Storybook examples.
 
-This repository now contains the design-system and repository foundation. Product API, persistence, routing, printer I/O, and completed application screens remain pending. Compositions remain a documented contract until a separate design and approval stage. See the [documentation map](docs/README.md) for product, architecture, decision, runbook, and implementation references.
+This repository contains the design-system, repository foundation, and the first Cloud identity/tenancy boundary: PostgreSQL-backed owner accounts, server sessions, secure Admin authentication routes, readiness, and OpenAPI. Shipment routing, kiosk/agent persistence, printer I/O, and completed application screens remain pending. Compositions remain a documented contract until their separate design and approval stage. See the [documentation map](docs/README.md) for product, architecture, decision, runbook, and implementation references.
 
 ## Prerequisites
 
 - Node.js 24.19.0
 - .NET SDK 10.0.302
 - pnpm 11.17.0 through Corepack
+- Docker with Compose for local PostgreSQL 17.10
 - Local Chromium installed by Playwright
 
 ## Getting started
@@ -33,7 +34,15 @@ pnpm storybook:build
 pnpm test:visual
 pnpm check
 corepack pnpm check:foundation
+corepack pnpm test:cloud:contracts
+corepack pnpm test:cloud:compose
+dotnet tool restore
+dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
+dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
+node scripts/check-cloud-security.mjs
 ```
+
+`test:cloud:contracts` runs secret/configuration, cryptographic-preflight, and checked-wrapper mutation tests without PostgreSQL. `test:cloud:compose` resolves the real Compose file across database-only, disabled, proxy-only, network-only, combined, retained-key and missing-runtime configurations and requires Docker Compose. The integration suite requires a real PostgreSQL 17.10 maintenance connection in the secret `PUNTIRO_TEST_POSTGRES` variable. Starting Cloud is an operator action, not a validation command; use only the checked operation in [Cloud development and deployment operations](docs/runbooks/cloud-development.md). The suite never falls back to SQLite or an in-memory provider. Production migrations remain explicit deployment operations, not application startup behavior.
 
 `pnpm check` always runs the same local pipeline in this order:
 

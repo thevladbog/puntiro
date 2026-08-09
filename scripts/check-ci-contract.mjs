@@ -5,20 +5,23 @@ import path from 'node:path';
 const approvedActions = new Map([
   ['actions/checkout', {
     sha: '3d3c42e5aac5ba805825da76410c181273ba90b1',
-    count: 2,
+    count: 3,
   }],
   ['actions/setup-node', {
     sha: '820762786026740c76f36085b0efc47a31fe5020',
-    count: 1,
+    count: 3,
   }],
   ['actions/setup-dotnet', {
     sha: 'a98b56852c35b8e3190ac28c8c2271da59106c68',
-    count: 2,
+    count: 3,
   }],
 ]);
 
 const expectedAuditCommand = 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive';
-const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
+const expectedDotnetCommand = 'node scripts/check-dotnet.mjs';
+const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm test:cloud:contracts && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
+const expectedCloudContractsCommand = 'node --test scripts/check-cloud-security.test.mjs scripts/cloud-compose-wrapper.test.mjs scripts/preflight-cloud-runtime.test.mjs scripts/run-with-cloud-env.test.mjs scripts/validate-cloud-runtime-env.test.mjs';
+const expectedCloudComposeCommand = 'node --test scripts/check-cloud-compose.test.mjs';
 
 async function workflowFiles(root) {
   const workflowDirectory = path.join(root, '.github', 'workflows');
@@ -75,6 +78,7 @@ function validateFoundationWorkflow(content) {
   const errors = [];
   const repositoryJob = jobBlock(content, 'repository-contracts');
   const windowsJob = jobBlock(content, 'windows-build');
+  const cloudJob = jobBlock(content, 'cloud-identity');
 
   if (!repositoryJob) {
     errors.push('foundation workflow must define repository-contracts job');
@@ -86,8 +90,6 @@ function validateFoundationWorkflow(content) {
     requireJobCommands(errors, 'repository-contracts', repositoryJob, [
       'corepack pnpm install --frozen-lockfile',
       'corepack pnpm check:foundation',
-      'dotnet restore Puntiro.slnx',
-      'dotnet build Puntiro.slnx --configuration Release --no-restore',
     ]);
   }
 
@@ -96,11 +98,39 @@ function validateFoundationWorkflow(content) {
   } else {
     requireJobLine(errors, 'windows-build', windowsJob, 'name: Windows compile');
     requireJobLine(errors, 'windows-build', windowsJob, 'runs-on: windows-latest');
+    requireJobLine(errors, 'windows-build', windowsJob, 'node-version: 24.19.0');
     requireJobLine(errors, 'windows-build', windowsJob, 'dotnet-version: 10.0.302');
     requireJobCommands(errors, 'windows-build', windowsJob, [
-      'dotnet restore Puntiro.slnx',
-      'dotnet build Puntiro.slnx --configuration Release --no-restore',
+      'node scripts/check-dotnet.mjs',
     ]);
+  }
+
+  if (!cloudJob) {
+    errors.push('foundation workflow must define cloud-identity job');
+  } else {
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'name: Cloud identity and PostgreSQL');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'runs-on: ubuntu-latest');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'image: postgres:17.10-bookworm');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'node-version: 24.19.0');
+    requireJobLine(errors, 'cloud-identity', cloudJob, 'dotnet-version: 10.0.302');
+    if (!cloudJob.includes('PUNTIRO_TEST_POSTGRES:')) {
+      errors.push('cloud-identity job must set PUNTIRO_TEST_POSTGRES only in its job environment');
+    }
+    if (!cloudJob.includes('pg_isready')) {
+      errors.push('cloud-identity job must wait for PostgreSQL health');
+    }
+    requireJobCommands(errors, 'cloud-identity', cloudJob, [
+      'dotnet tool restore',
+      'dotnet restore Puntiro.slnx --locked-mode',
+      'dotnet build Puntiro.slnx --configuration Release --no-restore',
+      'dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build',
+      'dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build',
+      'node scripts/check-cloud-security.mjs',
+      'corepack pnpm test:cloud:compose',
+    ]);
+    if (/\brun:\s*.*(?:echo|printenv).*PUNTIRO_TEST_POSTGRES/i.test(cloudJob)) {
+      errors.push('cloud-identity job must not print PUNTIRO_TEST_POSTGRES');
+    }
   }
 
   return errors;
@@ -159,8 +189,20 @@ export async function validateCiContract(rootUrl) {
         'package.json dependencies:audit must audit all npm dependencies and transitive NuGet packages',
       );
     }
+    if (manifest.scripts?.['check:dotnet'] !== expectedDotnetCommand) {
+      errors.push('package.json check:dotnet must invoke the definitive isolated-artifact identity policy chain');
+    }
+    if (Object.hasOwn(manifest.scripts ?? {}, 'internals:check')) {
+      errors.push('package.json must not expose fixed-path internals:check');
+    }
     if (manifest.scripts?.['check:foundation'] !== expectedFoundationCommand) {
       errors.push('package.json check:foundation does not match the approved aggregate command');
+    }
+    if (manifest.scripts?.['test:cloud:contracts'] !== expectedCloudContractsCommand) {
+      errors.push('package.json test:cloud:contracts must run the cloud security mutation suite');
+    }
+    if (manifest.scripts?.['test:cloud:compose'] !== expectedCloudComposeCommand) {
+      errors.push('package.json test:cloud:compose must run the executable Compose configuration suite');
     }
   } catch {
     errors.push('Missing or invalid package.json for CI contract');
