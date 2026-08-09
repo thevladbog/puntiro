@@ -80,15 +80,15 @@ internal sealed class IntegrationTokenService(
                 var rawToken = material.TakeRawToken();
                 return new IssuedIntegrationToken(metadata, rawToken);
             }
-            catch (Exception exception) when (IsRetriableCreationFailure(exception))
+            catch (Exception exception)
             {
-                lastRetriableError = exception;
-                if (token is not null)
+                CleanupFailedCreationAttempt(token);
+                if (!IsRetriableCreationFailure(exception))
                 {
-                    DetachAndClear(token);
+                    throw;
                 }
 
-                context.ChangeTracker.Clear();
+                lastRetriableError = exception;
                 if (attempt == MaximumCreationAttempts)
                 {
                     throw new IntegrationTokenCreationConflictException(exception);
@@ -301,6 +301,27 @@ internal sealed class IntegrationTokenService(
 
         context.Entry(token).State = EntityState.Detached;
         token.ClearSecretVerifier();
+    }
+
+    private void CleanupFailedCreationAttempt(IntegrationToken? token)
+    {
+        try
+        {
+            token?.ClearSecretVerifier();
+        }
+        catch
+        {
+            // Cleanup is best effort and must never replace the primary create failure.
+        }
+
+        try
+        {
+            context.ChangeTracker.Clear();
+        }
+        catch
+        {
+            // The caller must receive the original provider/cancellation failure.
+        }
     }
 
     private static bool IsRetriableCreationFailure(Exception exception)

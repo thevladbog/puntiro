@@ -59,7 +59,7 @@ Display names are trimmed and must contain 1–100 valid Unicode scalar values. 
 
 Creation runs in a PostgreSQL `Serializable` transaction, counts active rows for the organization, selects an available active slot, inserts the token/scopes and appends the audit event. Serialization/deadlock failures and collisions on the two owned uniqueness guards retry at most four complete attempts with a fresh secret. After the bound, callers receive the generic `IntegrationTokenCreationConflictException`. A count of two produces `ActiveTokenLimitException` without generating a token.
 
-The raw token is transferred to the caller only after commit. Failed attempts dispose/clear raw and verifier buffers. List projects only metadata and scopes; it never loads or returns the verifier or raw value.
+The raw token is transferred to the caller only after commit. Every failed attempt, including cancellation and non-retriable provider failures, first completes transaction disposal and then clears verifier bytes and all attempt-owned tracked state before propagating the original exception. Cleanup is idempotent, best effort and never replaces the primary failure. List projects only metadata and scopes; it never loads or returns the verifier or raw value.
 
 ### Authenticate
 

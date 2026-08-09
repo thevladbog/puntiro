@@ -29,7 +29,9 @@ public sealed class IntegrationTokenCodecTests
         var raw = issued.RawToken.Reveal();
         var expectedPublicId = Base64Url.Encode(PublicIdBytes);
 
-        Assert.Equal($"pnt_live_{expectedPublicId}.{Base64Url.Encode(Secret)}", raw);
+        AssertSensitiveTextEqual(
+            $"pnt_live_{expectedPublicId}.{Base64Url.Encode(Secret)}",
+            raw);
         Assert.Equal(expectedPublicId, issued.PublicId);
         Assert.Equal("integration-v1", issued.KeyVersion);
         Assert.Equal(32, issued.SecretVerifier.Length);
@@ -42,7 +44,7 @@ public sealed class IntegrationTokenCodecTests
         Secret.CopyTo(input, purpose.Length + publicId.Length);
         var expectedVerifier = HMACSHA256.HashData(Key, input);
 
-        Assert.Equal(expectedVerifier, issued.SecretVerifier);
+        AssertSensitiveBytesEqual(expectedVerifier, issued.SecretVerifier);
     }
 
     [Theory]
@@ -58,7 +60,7 @@ public sealed class IntegrationTokenCodecTests
 
         Assert.False(codec.TryRead(token, out var publicId, out var parsedSecret));
         Assert.Equal(string.Empty, publicId);
-        Assert.Empty(parsedSecret);
+        AssertNoParsedSecret(parsedSecret);
     }
 
     [Fact]
@@ -90,7 +92,7 @@ public sealed class IntegrationTokenCodecTests
         try
         {
             Assert.Equal(issued.PublicId, publicId);
-            Assert.Equal(Secret, parsedSecret);
+            AssertSensitiveBytesEqual(Secret, parsedSecret);
         }
         finally
         {
@@ -116,7 +118,7 @@ public sealed class IntegrationTokenCodecTests
 
         Assert.False(codec.TryRead(noncanonical, out var publicId, out var parsedSecret));
         Assert.Equal(string.Empty, publicId);
-        Assert.Empty(parsedSecret);
+        AssertNoParsedSecret(parsedSecret);
     }
 
     [Fact]
@@ -128,7 +130,7 @@ public sealed class IntegrationTokenCodecTests
         var encodedKey = Convert.ToBase64String(Key);
 
         Assert.Equal(nameof(IntegrationKeyOptions), options.ToString());
-        Assert.DoesNotContain(encodedKey, JsonSerializer.Serialize(options));
+        AssertSensitiveTextAbsent(encodedKey, JsonSerializer.Serialize(options));
         Assert.Throws<ArgumentException>(() => new IntegrationKeyOptions(
             "missing",
             new Dictionary<string, byte[]> { ["integration-v1"] = Key }));
@@ -144,4 +146,26 @@ public sealed class IntegrationTokenCodecTests
         new(
             IntegrationKeyOptions.ForTesting("integration-v1", Key),
             new TestSecretGenerator(PublicIdBytes, Secret));
+
+    private static void AssertSensitiveTextEqual(string expected, string actual) =>
+        Assert.True(
+            string.Equals(expected, actual, StringComparison.Ordinal),
+            "Sensitive text did not match the independently derived fixture.");
+
+    private static void AssertSensitiveBytesEqual(
+        ReadOnlySpan<byte> expected,
+        ReadOnlySpan<byte> actual) =>
+        Assert.True(
+            CryptographicOperations.FixedTimeEquals(expected, actual),
+            "Sensitive bytes did not match the independently derived fixture.");
+
+    private static void AssertSensitiveTextAbsent(string sensitive, string candidate) =>
+        Assert.False(
+            candidate.Contains(sensitive, StringComparison.Ordinal),
+            "A redacted representation exposed sensitive text.");
+
+    private static void AssertNoParsedSecret(byte[] parsedSecret) =>
+        Assert.True(
+            parsedSecret.Length == 0,
+            "A rejected credential returned parsed secret bytes.");
 }

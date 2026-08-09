@@ -1,5 +1,8 @@
+using System.Data.Common;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Puntiro.IntegrationTests.Infrastructure;
 using Puntiro.Modules.Integrations.Contracts;
 using Puntiro.Modules.Integrations.Domain;
@@ -15,6 +18,39 @@ namespace Puntiro.IntegrationTests.Integrations;
 public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
 {
     [Fact]
+    public async Task Non_retriable_save_failure_cleans_attempt_before_reusing_the_same_scope()
+    {
+        await AssertFailedCreateIsIsolatedAsync(
+            new InjectedCreateFailureException(),
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Non_retriable_commit_failure_cleans_attempt_before_reusing_the_same_scope()
+    {
+        await AssertFailedCreateIsIsolatedAsync(
+            new InjectedCreateFailureException(),
+            TestContext.Current.CancellationToken,
+            failAtCommit: true);
+    }
+
+    [Fact]
+    public async Task Cancellation_during_save_cleans_attempt_before_reusing_the_same_scope()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var failure = new OperationCanceledException(
+            "Injected integration token save cancellation.",
+            cancellation.Token);
+        var caught = await AssertFailedCreateIsIsolatedAsync(
+            failure,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(cancellation.Token, caught.CancellationToken);
+    }
+
+    [Fact]
     public async Task Create_returns_secret_once_but_persists_only_verifier_and_safe_metadata()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -27,13 +63,20 @@ public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
             .Include(item => item.Scopes)
             .SingleAsync(item => item.Id == issued.Metadata.Id, cancellationToken);
 
-        Assert.Matches("^pnt_live_[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$", raw);
+        Assert.True(
+            Regex.IsMatch(
+                raw,
+                "^pnt_live_[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+                RegexOptions.CultureInvariant),
+            "Issued bearer did not use the canonical bounded token format.");
         Assert.Equal("ERP connector", issued.Metadata.DisplayName);
         Assert.Equal(32, row.SecretVerifier.Length);
-        Assert.NotEqual(raw, Convert.ToBase64String(row.SecretVerifier));
-        Assert.DoesNotContain(raw, scope.Context.ChangeTracker.DebugView.LongView);
-        Assert.DoesNotContain(raw, JsonSerializer.Serialize(row));
-        Assert.DoesNotContain(raw, JsonSerializer.Serialize(issued));
+        Assert.False(
+            string.Equals(raw, Convert.ToBase64String(row.SecretVerifier), StringComparison.Ordinal),
+            "The durable verifier representation matched the raw bearer.");
+        AssertSensitiveTextAbsent(raw, scope.Context.ChangeTracker.DebugView.LongView);
+        AssertSensitiveTextAbsent(raw, JsonSerializer.Serialize(row));
+        AssertSensitiveTextAbsent(raw, JsonSerializer.Serialize(issued));
         Assert.Equal(scope.OrganizationId, row.OrganizationId);
         Assert.Equal(scope.ActorUserId, row.CreatedByUserId);
     }
@@ -254,7 +297,9 @@ public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
             issued.RawToken.Reveal(), cancellationToken));
         var metadata = (await scope.Service.ListAsync(scope.OrganizationId, cancellationToken)).Single();
         Assert.NotNull(metadata.RevokedAt);
-        Assert.DoesNotContain(issued.RawToken.Reveal(), JsonSerializer.Serialize(metadata));
+        AssertSensitiveTextAbsent(
+            issued.RawToken.Reveal(),
+            JsonSerializer.Serialize(metadata));
     }
 
     [Fact]
@@ -299,6 +344,54 @@ public sealed class IntegrationTokenServiceTests(PostgresDatabase database)
         }
     }
 
+    private static void AssertSensitiveTextAbsent(string sensitive, string candidate) =>
+        Assert.False(
+            candidate.Contains(sensitive, StringComparison.Ordinal),
+            "A metadata, JSON, debugger or tracker representation exposed bearer material.");
+
+    private async Task<TException> AssertFailedCreateIsIsolatedAsync<TException>(
+        TException failure,
+        CancellationToken cancellationToken,
+        bool failAtCommit = false)
+        where TException : Exception
+    {
+        IFailedIntegrationTokenCreateInterceptor interceptor = failAtCommit
+            ? new FailFirstIntegrationTokenCommitInterceptor(failure)
+            : new FailFirstIntegrationTokenSaveInterceptor(failure);
+        await using var scope = await IntegrationTestScope.CreateAsync(
+            database.ConnectionString,
+            integrationInterceptor: interceptor);
+
+        var caught = await Assert.ThrowsAsync<TException>(() =>
+            scope.Service.CreateAsync(scope.Command("Failed attempt"), cancellationToken));
+
+        Assert.Same(failure, caught);
+        var failedToken = Assert.IsType<IntegrationToken>(interceptor.CapturedToken);
+        Assert.True(
+            failedToken.SecretVerifier.All(static value => value == 0),
+            "A failed create retained credential verifier bytes in memory.");
+        Assert.False(
+            scope.Context.ChangeTracker.Entries().Any(),
+            "A failed create retained attempt-owned entities in the scoped change tracker.");
+
+        using var issued = await scope.Service.CreateAsync(
+            scope.Command("Successful retry"), cancellationToken);
+        scope.Context.ChangeTracker.Clear();
+
+        Assert.Equal(1, await scope.Context.IntegrationTokens.AsNoTracking().CountAsync(
+            item => item.OrganizationId == scope.OrganizationId,
+            cancellationToken));
+        Assert.Equal(1, await scope.Context.IntegrationTokenScopes.AsNoTracking().CountAsync(
+            item => scope.Context.IntegrationTokens.Any(token =>
+                token.Id == item.TokenId && token.OrganizationId == scope.OrganizationId),
+            cancellationToken));
+        Assert.Equal(1, await scope.Context.SecurityEvents.AsNoTracking().CountAsync(
+            item => item.OrganizationId == scope.OrganizationId,
+            cancellationToken));
+
+        return caught;
+    }
+
     private sealed record CreateResult(bool Success, Exception? Error);
 }
 
@@ -323,18 +416,24 @@ internal sealed class IntegrationTestScope : IAsyncDisposable
     internal static async Task<IntegrationTestScope> CreateAsync(
         string connectionString,
         DateTimeOffset? now = null,
-        bool migrate = true)
+        bool migrate = true,
+        IInterceptor? integrationInterceptor = null)
     {
-        var options = new DbContextOptionsBuilder<IntegrationsDbContext>()
+        var optionsBuilder = new DbContextOptionsBuilder<IntegrationsDbContext>()
             .UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "integrations"))
-            .Options;
-        var context = new IntegrationsDbContext(options);
+                npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "integrations"));
         if (migrate)
         {
-            await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+            await using var migrationContext = new IntegrationsDbContext(optionsBuilder.Options);
+            await migrationContext.Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
 
+        if (integrationInterceptor is not null)
+        {
+            optionsBuilder.AddInterceptors(integrationInterceptor);
+        }
+
+        var context = new IntegrationsDbContext(optionsBuilder.Options);
         var time = new IntegrationTimeProvider(
             now ?? new DateTimeOffset(2026, 8, 8, 10, 0, 0, TimeSpan.Zero));
         var keys = IntegrationKeyOptions.ForTesting(
@@ -355,6 +454,68 @@ internal sealed class IntegrationTestScope : IAsyncDisposable
 
     public ValueTask DisposeAsync() => Context.DisposeAsync();
 }
+
+internal interface IFailedIntegrationTokenCreateInterceptor : IInterceptor
+{
+    IntegrationToken? CapturedToken { get; }
+}
+
+internal sealed class FailFirstIntegrationTokenSaveInterceptor(Exception failure)
+    : SaveChangesInterceptor, IFailedIntegrationTokenCreateInterceptor
+{
+    private int _remainingFailures = 1;
+
+    public IntegrationToken? CapturedToken { get; private set; }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.Exchange(ref _remainingFailures, 0) == 0)
+        {
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+
+        CapturedToken = eventData.Context?.ChangeTracker
+            .Entries<IntegrationToken>()
+            .Single()
+            .Entity;
+        return ValueTask.FromException<InterceptionResult<int>>(failure);
+    }
+}
+
+internal sealed class FailFirstIntegrationTokenCommitInterceptor(Exception failure)
+    : DbTransactionInterceptor, IFailedIntegrationTokenCreateInterceptor
+{
+    private int _remainingFailures = 1;
+
+    public IntegrationToken? CapturedToken { get; private set; }
+
+    public override ValueTask<InterceptionResult> TransactionCommittingAsync(
+        DbTransaction transaction,
+        TransactionEventData eventData,
+        InterceptionResult result,
+        CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.Exchange(ref _remainingFailures, 0) == 0)
+        {
+            return base.TransactionCommittingAsync(
+                transaction,
+                eventData,
+                result,
+                cancellationToken);
+        }
+
+        CapturedToken = eventData.Context?.ChangeTracker
+            .Entries<IntegrationToken>()
+            .Single()
+            .Entity;
+        return ValueTask.FromException<InterceptionResult>(failure);
+    }
+}
+
+internal sealed class InjectedCreateFailureException : Exception;
 
 internal sealed class IntegrationTimeProvider(DateTimeOffset utcNow) : TimeProvider
 {
