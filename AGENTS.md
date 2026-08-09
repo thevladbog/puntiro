@@ -23,6 +23,8 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 - Cloud unit tests: `dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release`
 - Cloud PostgreSQL tests: `dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release`
 - Cloud security contracts: `node scripts/check-cloud-security.mjs`
+- Cloud security mutation suite: `corepack pnpm test:cloud:contracts`
+- Executable Compose contracts: `corepack pnpm test:cloud:compose`
 - Existing UI pipeline: `corepack pnpm check`
 
 ## Cloud Deployment Safety
@@ -32,6 +34,9 @@ Read this file before changing the repository. The closest nested `AGENTS.md` ma
 - Forwarded headers are disabled unless the exact immediate proxy IP/network allowlist is configured. Keep one symmetric hop, never enable `ASPNETCORE_FORWARDEDHEADERS_ENABLED`, and test Timeweb after every topology change.
 - `/health/live` proves process liveness only. Traffic is allowed only after `/health/ready` confirms PostgreSQL, migrations, Data Protection, and current/historical HMAC requirements.
 - Roll back application code with expand/contract-compatible schema and retained keys. Never automate a destructive EF down-migration against production data.
+- Keep populated `.env.cloud` and `cloud-runtime.env` files both ignored and untracked at mode `0600`. They are raw dotenv data for Compose and `scripts/run-with-cloud-env.mjs`; never source them as shell code.
+- Pass proxy indices and every retained HMAC `Keys__<version>` through the ignored raw runtime env file. Do not enumerate versions or create blank indexed proxy values in Compose.
+- Host provisioning and Cloud must use the same persistent host Data Protection ring through the documented bind mount. Validate restore project/database targets, private ring/certificate paths, and all retained keys with `scripts/validate-cloud-runtime-env.mjs` before any restore-project service is created or started.
 
 ## Dependency Policy
 

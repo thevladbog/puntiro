@@ -20,7 +20,8 @@ const approvedActions = new Map([
 const expectedAuditCommand = 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive';
 const expectedDotnetCommand = 'node scripts/check-dotnet.mjs';
 const expectedFoundationCommand = 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm test:cloud:contracts && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet';
-const expectedCloudContractsCommand = 'node --test scripts/check-cloud-security.test.mjs';
+const expectedCloudContractsCommand = 'node --test scripts/check-cloud-security.test.mjs scripts/run-with-cloud-env.test.mjs scripts/validate-cloud-runtime-env.test.mjs';
+const expectedCloudComposeCommand = 'node --test scripts/check-cloud-compose.test.mjs';
 
 async function workflowFiles(root) {
   const workflowDirectory = path.join(root, '.github', 'workflows');
@@ -125,6 +126,7 @@ function validateFoundationWorkflow(content) {
       'dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build',
       'dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build',
       'node scripts/check-cloud-security.mjs',
+      'corepack pnpm test:cloud:compose',
     ]);
     if (/\brun:\s*.*(?:echo|printenv).*PUNTIRO_TEST_POSTGRES/i.test(cloudJob)) {
       errors.push('cloud-identity job must not print PUNTIRO_TEST_POSTGRES');
@@ -198,6 +200,9 @@ export async function validateCiContract(rootUrl) {
     }
     if (manifest.scripts?.['test:cloud:contracts'] !== expectedCloudContractsCommand) {
       errors.push('package.json test:cloud:contracts must run the cloud security mutation suite');
+    }
+    if (manifest.scripts?.['test:cloud:compose'] !== expectedCloudComposeCommand) {
+      errors.push('package.json test:cloud:compose must run the executable Compose configuration suite');
     }
   } catch {
     errors.push('Missing or invalid package.json for CI contract');

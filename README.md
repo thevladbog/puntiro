@@ -35,13 +35,14 @@ pnpm test:visual
 pnpm check
 corepack pnpm check:foundation
 corepack pnpm test:cloud:contracts
+corepack pnpm test:cloud:compose
 dotnet tool restore
 dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
 dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
 node scripts/check-cloud-security.mjs
 ```
 
-The integration suite requires a real PostgreSQL 17.10 maintenance connection in the secret `PUNTIRO_TEST_POSTGRES` variable. Follow [Cloud development and deployment operations](docs/runbooks/cloud-development.md); the suite never falls back to SQLite or an in-memory provider. Production migrations remain explicit deployment operations, not application startup behavior.
+`test:cloud:contracts` runs secret/configuration mutation tests without PostgreSQL. `test:cloud:compose` resolves the real Compose file across disabled, proxy-only, network-only, combined and retained-key configurations and requires Docker Compose. The integration suite requires a real PostgreSQL 17.10 maintenance connection in the secret `PUNTIRO_TEST_POSTGRES` variable. Follow [Cloud development and deployment operations](docs/runbooks/cloud-development.md); the suite never falls back to SQLite or an in-memory provider. Production migrations remain explicit deployment operations, not application startup behavior.
 
 `pnpm check` always runs the same local pipeline in this order:
 

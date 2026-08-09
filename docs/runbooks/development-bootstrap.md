@@ -24,6 +24,7 @@ corepack pnpm foundation:check
 corepack pnpm check:dotnet
 corepack pnpm check:foundation
 corepack pnpm test:cloud:contracts
+corepack pnpm test:cloud:compose
 dotnet tool restore
 dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release
 dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release
@@ -41,6 +42,6 @@ The declaration's source location is deliberately not part of this policy. `Prop
 
 `check:foundation` is the aggregate repository-foundation gate and includes both the fast and definitive layers. `check` runs the existing design-system validation pipeline; these commands are automated evidence only and do not replace Windows or physical-hardware acceptance.
 
-`test:cloud:contracts` runs secret-free repository mutation tests and requires no PostgreSQL. The integration-test command requires a secret `PUNTIRO_TEST_POSTGRES` maintenance connection to real PostgreSQL 17.10 and fails rather than skipping when it is absent. Use the ignored local configuration and explicit migration/provisioning order in [Cloud development and deployment operations](cloud-development.md). Production Cloud never applies migrations at startup.
+`test:cloud:contracts` runs secret-free repository mutation tests and requires no PostgreSQL. `test:cloud:compose` resolves the production-shaped Compose contract and requires Docker Compose, but starts no container. The integration-test command requires a secret `PUNTIRO_TEST_POSTGRES` maintenance connection to real PostgreSQL 17.10 and fails rather than skipping when it is absent. Use the ignored local configuration, secret-safe env helper and explicit migration/provisioning order in [Cloud development and deployment operations](cloud-development.md). Production Cloud never applies migrations at startup.
 
 The repository-level `.npmrc` fixes dependency resolution to the public npm registry. Keep `pnpm-lock.yaml` free of machine-specific registry URLs so the same frozen lockfile is verifiable locally and on GitHub Actions.

@@ -15,7 +15,7 @@
 
 - [ADR 0001: Modular monolith and Windows Agent](adr/0001-modular-monolith-agent.md)
 - [ADR 0002: Effective friend metadata enforcement](adr/0002-effective-friend-metadata-enforcement.md)
-- [ADR 0002: Global identity and credential boundaries](adr/0002-global-identity-and-credentials.md)
+- [ADR 0003: Global identity and credential boundaries](adr/0003-global-identity-and-credentials.md)
 
 ## Modules
 

@@ -1,4 +1,4 @@
-# ADR 0002: Global Identity and Credential Boundaries
+# ADR 0003: Global Identity and Credential Boundaries
 
 - Status: Accepted
 - Date: 2026-08-08

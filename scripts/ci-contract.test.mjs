@@ -60,6 +60,7 @@ jobs:
       - run: dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build
       - run: dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build
       - run: node scripts/check-cloud-security.mjs
+      - run: corepack pnpm test:cloud:compose
 `;
 
 const validManifest = {
@@ -67,7 +68,8 @@ const validManifest = {
     'dependencies:audit': 'corepack pnpm audit --audit-level high && dotnet package list --project Puntiro.slnx --vulnerable --include-transitive',
     'check:dotnet': 'node scripts/check-dotnet.mjs',
     'check:foundation': 'corepack pnpm docs:check && corepack pnpm dependencies:check && corepack pnpm dependencies:audit && corepack pnpm test:repository && corepack pnpm foundation:check && corepack pnpm test:cloud:contracts && corepack pnpm --filter @puntiro/ui build && corepack pnpm --filter @puntiro/admin typecheck && corepack pnpm --filter @puntiro/kiosk-web typecheck && corepack pnpm --filter @puntiro/admin build && corepack pnpm --filter @puntiro/kiosk-web build && corepack pnpm check:dotnet',
-    'test:cloud:contracts': 'node --test scripts/check-cloud-security.test.mjs',
+    'test:cloud:contracts': 'node --test scripts/check-cloud-security.test.mjs scripts/run-with-cloud-env.test.mjs scripts/validate-cloud-runtime-env.test.mjs',
+    'test:cloud:compose': 'node --test scripts/check-cloud-compose.test.mjs',
   },
 };
 
@@ -134,13 +136,15 @@ test('requires the exact PostgreSQL cloud identity job and locked security gates
   const workflow = validWorkflow
     .replace('image: postgres:17.10-bookworm', 'image: postgres:17')
     .replace('      - run: dotnet restore Puntiro.slnx --locked-mode\n', '')
-    .replace('      - run: node scripts/check-cloud-security.mjs\n', '');
+    .replace('      - run: node scripts/check-cloud-security.mjs\n', '')
+    .replace('      - run: corepack pnpm test:cloud:compose\n', '');
   const { rootUrl } = await withCiFixture(t, workflow);
 
   const errors = await validateCiContract(rootUrl);
   assert.ok(errors.includes('cloud-identity job must declare: image: postgres:17.10-bookworm'));
   assert.ok(errors.includes('cloud-identity job must run: dotnet restore Puntiro.slnx --locked-mode'));
   assert.ok(errors.includes('cloud-identity job must run: node scripts/check-cloud-security.mjs'));
+  assert.ok(errors.includes('cloud-identity job must run: corepack pnpm test:cloud:compose'));
 });
 
 test('rejects an audit or aggregate command that drifts from the exact contract', async t => {
@@ -152,6 +156,18 @@ test('rejects an audit or aggregate command that drifts from the exact contract'
   assert.deepEqual((await validateCiContract(rootUrl)).filter(error => error.startsWith('package.json')), [
     'package.json dependencies:audit must audit all npm dependencies and transitive NuGet packages',
     'package.json check:foundation does not match the approved aggregate command',
+  ]);
+});
+
+test('requires executable Cloud environment and Compose mutation suites', async t => {
+  const manifest = structuredClone(validManifest);
+  manifest.scripts['test:cloud:contracts'] = 'node --test scripts/check-cloud-security.test.mjs';
+  delete manifest.scripts['test:cloud:compose'];
+  const { rootUrl } = await withCiFixture(t, validWorkflow, manifest);
+
+  assert.deepEqual((await validateCiContract(rootUrl)).filter(error => error.startsWith('package.json test:cloud')), [
+    'package.json test:cloud:contracts must run the cloud security mutation suite',
+    'package.json test:cloud:compose must run the executable Compose configuration suite',
   ]);
 });
 

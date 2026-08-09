@@ -1,6 +1,10 @@
-import { access, readFile, readdir } from 'node:fs/promises';
+import { execFile as execFileCallback } from 'node:child_process';
+import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFile = promisify(execFileCallback);
 
 const requiredArtifacts = [
   'apps/cloud/Program.cs',
@@ -10,7 +14,10 @@ const requiredArtifacts = [
   'apps/cloud/Configuration/CloudServiceCollectionExtensions.cs',
   'infra/compose/cloud-development.yml',
   'infra/compose/.env.cloud.example',
-  'docs/adr/0002-global-identity-and-credentials.md',
+  'infra/compose/cloud-runtime.env.example',
+  'scripts/run-with-cloud-env.mjs',
+  'scripts/validate-cloud-runtime-env.mjs',
+  'docs/adr/0003-global-identity-and-credentials.md',
   'docs/modules/identity.md',
   'docs/modules/tenancy.md',
   'docs/modules/integrations.md',
@@ -28,6 +35,8 @@ const requiredAgentCommands = [
   'dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release',
   'dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release',
   'node scripts/check-cloud-security.mjs',
+  'corepack pnpm test:cloud:contracts',
+  'corepack pnpm test:cloud:compose',
 ];
 
 async function exists(target) {
@@ -39,67 +48,160 @@ async function exists(target) {
   }
 }
 
-async function filesBelow(directory) {
-  if (!await exists(directory)) return [];
-  const results = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...await filesBelow(target));
-    } else if (entry.isFile()) {
-      results.push(target);
+function enablesBodyLogging(content) {
+  return /HttpLogging/i.test(content) &&
+    /(?:RequestBody|ResponseBody|BodyLogLimit|LoggingFields["']?\s*:\s*["']?All\b)/i.test(content);
+}
+
+const integrationTokenPattern = /pnt_(?:live|test)_[A-Za-z0-9_-]{16,32}\.[A-Za-z0-9+/_-]{32,64}={0,2}/;
+
+function containsIntegrationToken(content) {
+  if (integrationTokenPattern.test(content)) return true;
+  const encodedCandidates = content.match(/(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{64,180}={0,2}(?![A-Za-z0-9+/_-])/g) ?? [];
+  for (const candidate of encodedCandidates) {
+    const normalized = candidate.replaceAll('-', '+').replaceAll('_', '/');
+    try {
+      const decoded = Buffer.from(normalized, 'base64');
+      if (decoded.length >= 48 && decoded.length <= 128 &&
+          decoded.toString('base64').replace(/=+$/, '') === normalized.replace(/=+$/, '') &&
+          integrationTokenPattern.test(decoded.toString('utf8'))) return true;
+    } catch {
+      // Ignore bounded non-base64 configuration values.
     }
   }
-  return results.sort();
+  return false;
 }
 
-function enablesBodyLogging(content) {
-  return /(?:RequestBody|ResponseBody)/i.test(content) &&
-    /(?:HttpLogging|LoggingFields)/i.test(content);
-}
-
-function hasPopulatedAssignment(content, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^[ \\t]*${escaped}[ \\t]*=[ \\t]*[^\\s#][^\\r\\n]*$`, 'm').test(content);
-}
-
-function configHasPopulatedJsonValue(content, pathPattern) {
+async function repositoryFiles(root, errors) {
   try {
-    const value = JSON.parse(content);
-    const visit = (node, segments = []) => {
-      if (node === null || typeof node !== 'object') {
-        return typeof node === 'string' && node.trim().length > 0 && pathPattern.test(segments.join('__'));
-      }
-      return Object.entries(node).some(([key, child]) => visit(child, [...segments, key]));
-    };
-    return visit(value);
+    const { stdout } = await execFile(
+      'git',
+      ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+      { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+    );
+    return stdout.split('\0').filter(Boolean).sort();
   } catch {
-    return false;
+    errors.push('Unable to enumerate tracked runtime configuration safely');
+    return [];
   }
 }
 
-async function validateRuntime(root, errors) {
-  const cloudRoot = path.join(root, 'apps', 'cloud');
-  for (const target of await filesBelow(cloudRoot)) {
-    if (path.extname(target) !== '.cs') continue;
+function unquote(raw) {
+  let value = raw.trim();
+  const comment = value.search(/\s+#/);
+  if (comment !== -1) value = value.slice(0, comment).trimEnd();
+  if (value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+       (value.startsWith("'") && value.endsWith("'")))) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function jsonEntries(content) {
+  try {
+    const root = JSON.parse(content);
+    const entries = [];
+    const visit = (node, segments) => {
+      if (node === null || typeof node !== 'object') {
+        if (typeof node === 'string') entries.push([segments.join('__'), node]);
+        return;
+      }
+      for (const [key, child] of Object.entries(node)) visit(child, [...segments, key]);
+    };
+    visit(root, []);
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+function textConfigEntries(content) {
+  const entries = [];
+  const yamlStack = [];
+  for (const line of content.split(/\r?\n/)) {
+    if (line.trim().length === 0 || line.trimStart().startsWith('#')) continue;
+    const dotenv = line.match(/^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)=(.*)$/);
+    if (dotenv) {
+      entries.push([dotenv[1], unquote(dotenv[2])]);
+      continue;
+    }
+    const yaml = line.match(/^(\s*)(?:-\s*)?["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?\s*:\s*(.*)$/);
+    if (!yaml) continue;
+    const indent = yaml[1].replaceAll('\t', '  ').length;
+    while (yamlStack.length > 0 && yamlStack.at(-1).indent >= indent) yamlStack.pop();
+    const pathSegments = [...yamlStack.map(item => item.key), yaml[2]];
+    if (yaml[3].trim().length === 0) {
+      yamlStack.push({ indent, key: yaml[2] });
+    } else {
+      entries.push([pathSegments.join('__'), unquote(yaml[3])]);
+    }
+  }
+  return entries;
+}
+
+function configEntries(relativePath, content) {
+  return path.extname(relativePath).toLowerCase() === '.json'
+    ? [...jsonEntries(content), ...textConfigEntries(content)]
+    : textConfigEntries(content);
+}
+
+function isConfigurationPath(relativePath) {
+  if (!/^(?:\.github|apps|infra|deploy|src|tools)\//.test(relativePath) &&
+      relativePath.includes('/')) return false;
+  const basename = path.basename(relativePath).toLowerCase();
+  const extension = path.extname(basename);
+  return ['.json', '.yml', '.yaml', '.env', '.config', '.conf', '.toml', '.ini', '.properties', '.xml']
+    .includes(extension) ||
+    basename.startsWith('.env') ||
+    /(?:appsettings|compose|dockerfile|settings|config)/.test(basename);
+}
+
+function isReferenceValue(value) {
+  const trimmed = value.trim();
+  return trimmed.length === 0 ||
+    /^\$\{(?:\{[^}]+\}|[^}]+)\}$/.test(trimmed) ||
+    /^%[A-Za-z_][A-Za-z0-9_]*%$/.test(trimmed) ||
+    /^<[^>]+>$/.test(trimmed);
+}
+
+function isExplicitCiFixture(relativePath, name, value) {
+  if (!relativePath.startsWith('.github/')) return false;
+  if (/(?:^|__)POSTGRES_PASSWORD$/i.test(name)) {
+    return value === 'puntiro-ci-fixture-only';
+  }
+  if (/(?:^|__)PUNTIRO_TEST_POSTGRES$/i.test(name)) {
+    return value === 'Host=127.0.0.1;Port=5432;Database=puntiro_ci;Username=puntiro_ci;Password=puntiro-ci-fixture-only;Include Error Detail=false';
+  }
+  return false;
+}
+
+async function validateRuntime(root, errors, tracked) {
+  const productionCode = tracked.filter(relativePath =>
+    /^(?:apps|src|tools)\//.test(relativePath) && relativePath.endsWith('.cs'));
+  for (const relativePath of productionCode) {
+    const target = path.join(root, relativePath);
     const content = await readFile(target, 'utf8');
-    if (/\.Database\.(?:Migrate|MigrateAsync|EnsureCreated|EnsureCreatedAsync)\s*\(/.test(content)) {
-      const relativePath = path.relative(root, target).split(path.sep).join('/');
+    if (/\bIMigrator\b|\b(?:Migrate|MigrateAsync|EnsureCreated|EnsureCreatedAsync)\s*\(/.test(content)) {
       errors.push(`${relativePath} must not migrate the production database at runtime`);
     }
+    if (/\b(?:AddHttpLogging|UseHttpLogging)\s*\(|\bHttpLoggingFields\s*\.\s*(?:[A-Za-z]*Body|All)\b|\b(?:RequestBodyLogLimit|ResponseBodyLogLimit)\b/.test(content)) {
+      errors.push(`${relativePath} must not configure request or response body logging`);
+    }
   }
 
-  const appsettings = (await filesBelow(cloudRoot)).filter(target =>
-    /^appsettings(?:\.[^.]+)?\.json$/i.test(path.basename(target)));
-  for (const target of appsettings) {
+  const runtimeConfigs = tracked.filter(relativePath =>
+    /^(?:apps|src|tools)\//.test(relativePath) &&
+    /^appsettings(?:\.[^.]+)?\.json$/i.test(path.basename(relativePath)));
+  for (const relativePath of runtimeConfigs) {
+    const target = path.join(root, relativePath);
     const content = await readFile(target, 'utf8');
     if (enablesBodyLogging(content)) {
-      const relativePath = path.relative(root, target).split(path.sep).join('/');
       errors.push(`${relativePath} must not enable request body logging`);
     }
   }
 
-  const programPath = path.join(cloudRoot, 'Program.cs');
+  const programPath = path.join(root, 'apps', 'cloud', 'Program.cs');
   if (await exists(programPath)) {
     const program = await readFile(programPath, 'utf8');
     const forwarded = program.indexOf('UsePuntiroForwardedHeaders');
@@ -110,46 +212,40 @@ async function validateRuntime(root, errors) {
   }
 }
 
-async function validateTrackedConfiguration(root, errors) {
-  const candidates = [
-    ...(await filesBelow(path.join(root, 'infra'))),
-    ...(await filesBelow(path.join(root, 'apps', 'cloud'))).filter(target =>
-      /^appsettings(?:\.[^.]+)?\.json$/i.test(path.basename(target))),
-  ].filter(target => {
-    const relativePath = path.relative(root, target).split(path.sep).join('/');
-    return relativePath !== 'infra/compose/.env.cloud' &&
-      !relativePath.startsWith('infra/compose/cloud-secrets/') &&
-      !relativePath.startsWith('infra/compose/cloud-data-protection-keys/');
-  });
-  for (const target of [...new Set(candidates)].sort()) {
-    const relativePath = path.relative(root, target).split(path.sep).join('/');
+async function validateTrackedConfiguration(root, errors, tracked) {
+  const candidates = tracked.filter(isConfigurationPath);
+  for (const relativePath of candidates) {
+    const target = path.join(root, relativePath);
     const content = await readFile(target, 'utf8');
-    const isJson = path.extname(target).toLowerCase() === '.json';
-    const hasConnection = hasPopulatedAssignment(content, 'ConnectionStrings__Puntiro') ||
-      (isJson && configHasPopulatedJsonValue(content, /(?:^|__)ConnectionStrings__(?:Puntiro)$/i));
+    const entries = configEntries(relativePath, content);
+    const populated = ([name, value]) =>
+      !isReferenceValue(value) && !isExplicitCiFixture(relativePath, name, value);
+    const hasConnection = entries.some(entry =>
+      /(?:^|__)(?:ConnectionStrings__Puntiro|PUNTIRO_TEST_POSTGRES)$/i.test(entry[0]) &&
+      populated(entry));
     if (hasConnection) {
       errors.push(`${relativePath} must not contain a populated ConnectionStrings__Puntiro value`);
     }
 
-    const hasHmac = /Puntiro__Security__(?:Session|Recovery|Integration)Hmac__Keys__[A-Za-z0-9_-]+[ \t]*=[ \t]*[^\s#][^\r\n]*$/m.test(content) ||
-      (isJson && configHasPopulatedJsonValue(
-        content,
-        /Puntiro__Security__(?:Session|Recovery|Integration)Hmac__Keys__[A-Za-z0-9_-]+$/i,
-      ));
+    const hasHmac = entries.some(entry =>
+      /(?:^|__)Puntiro__Security__(?:Session|Recovery|Integration)Hmac__Keys__[A-Za-z0-9_-]+$/i
+        .test(entry[0]) && populated(entry));
     if (hasHmac) {
       errors.push(`${relativePath} must not contain populated HMAC key material`);
     }
 
-    const hasOtherSecret = [
-      'POSTGRES_PASSWORD',
-      'PUNTIRO_TEST_POSTGRES',
-      'Puntiro__Security__DataProtectionCertificatePassword',
-    ].some(name => hasPopulatedAssignment(content, name));
+    const hasOtherSecret = entries.some(entry => {
+      const explicit = /(?:^|__)(?:POSTGRES_PASSWORD|Puntiro__Security__DataProtectionCertificatePassword)$/i
+        .test(entry[0]);
+      const generic = /(?:^|__)(?:CLIENT_SECRET|API_KEY|SECRET_KEY)$/i.test(entry[0]) &&
+        entry[1].length >= 12;
+      return (explicit || generic) && populated(entry);
+    });
     if (hasOtherSecret) {
       errors.push(`${relativePath} must not contain populated secret configuration`);
     }
 
-    if (/pnt_live_[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/.test(content)) {
+    if (containsIntegrationToken(content)) {
       errors.push(`${relativePath} must not contain an integration token`);
     }
   }
@@ -189,6 +285,15 @@ async function validateCompose(root, errors) {
       !/^volumes:\s*$[\s\S]*^\s{2}puntiro-cloud-postgres:\s*$/m.test(content)) {
     errors.push('infra/compose/cloud-development.yml must use a named PostgreSQL data volume');
   }
+  if (!/env_file:\s*[\s\S]*PUNTIRO_CLOUD_RUNTIME_ENV_FILE[\s\S]*format:\s*raw/.test(content) ||
+      /Puntiro__Proxy__Known(?:Proxies|Networks)__\d+\s*:/.test(content) ||
+      /Puntiro__Security__(?:Session|Recovery|Integration)Hmac__Keys__[A-Za-z0-9_-]+\s*:/.test(content)) {
+    errors.push('infra/compose/cloud-development.yml must pass dynamic Cloud runtime values through the ignored raw env_file');
+  }
+  if (!/type:\s*bind[\s\S]{0,180}source:\s*\$\{Puntiro__Security__DataProtectionKeysPath[\s\S]{0,180}target:\s*\/var\/lib\/puntiro\/data-protection-keys/.test(content) ||
+      /puntiro-cloud-data-protection-keys/.test(content)) {
+    errors.push('infra/compose/cloud-development.yml must bind the host provisioning Data Protection ring into Cloud');
+  }
 }
 
 async function validateProxyBoundary(root, errors) {
@@ -220,12 +325,32 @@ async function validateAgents(root, errors) {
   }
 }
 
+async function validateRestoreOrdering(root, errors) {
+  const target = path.join(root, 'docs', 'runbooks', 'cloud-development.md');
+  if (!await exists(target)) return;
+  const content = await readFile(target, 'utf8');
+  const restoreStart = content.indexOf('PUNTIRO_RESTORE_PROJECT');
+  if (restoreStart === -1) {
+    errors.push('docs/runbooks/cloud-development.md must validate the restore environment before creating or starting restore services');
+    return;
+  }
+  const restore = content.slice(restoreStart);
+  const validation = restore.indexOf('node scripts/validate-cloud-runtime-env.mjs');
+  const operation = restore.search(
+    /docker compose[\s\S]{0,400}-p\s+"?\$PUNTIRO_RESTORE_PROJECT"?[\s\S]{0,240}\b(?:create|up|start)\b/,
+  );
+  if (validation === -1 || operation === -1 || validation > operation) {
+    errors.push('docs/runbooks/cloud-development.md must validate the restore environment before creating or starting restore services');
+  }
+}
+
 export async function validateCloudSecurity(rootUrl) {
   const root = fileURLToPath(rootUrl);
   const errors = [];
+  const tracked = await repositoryFiles(root, errors);
 
-  await validateRuntime(root, errors);
-  await validateTrackedConfiguration(root, errors);
+  await validateRuntime(root, errors, tracked);
+  await validateTrackedConfiguration(root, errors, tracked);
   await validateCookiePolicy(root, errors);
   await validateCompose(root, errors);
   await validateProxyBoundary(root, errors);
@@ -235,6 +360,7 @@ export async function validateCloudSecurity(rootUrl) {
     }
   }
   await validateAgents(root, errors);
+  await validateRestoreOrdering(root, errors);
   return errors;
 }
 

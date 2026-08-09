@@ -25,17 +25,18 @@ The following commands passed locally in this checkout with the pinned runtimes 
 - `corepack pnpm install --frozen-lockfile`;
 - `corepack pnpm dependencies:check` and `corepack pnpm dependencies:audit` — no known npm or transitive NuGet vulnerabilities reported by the configured registries;
 - `corepack pnpm docs:check`;
-- `corepack pnpm test:repository` — 70 passed, 0 failed;
-- `corepack pnpm test:cloud:contracts` — 11 passed, 0 failed;
+- `corepack pnpm test:repository` — 73 passed, 0 failed;
+- `corepack pnpm test:cloud:contracts` — 28 passed, 0 failed, including Git-enumerated secret/config probes, restore-env validation and secret-safe exact dotenv execution;
+- `corepack pnpm test:cloud:compose` — 5 passed, 0 failed, covering database-only configuration, disabled/proxy-only/network-only/combined proxy values, arbitrary retained HMAC versions and the shared host Data Protection bind;
 - `corepack pnpm check:foundation` — aggregate documentation, dependency, repository, boundary, UI package and Cloud security checks passed;
 - `corepack pnpm check` — UI unit tests 78 passed, Storybook tests 171 passed, the static Storybook build passed, and Playwright tests 28 passed;
 - `dotnet tool restore` and `dotnet restore Puntiro.slnx --locked-mode`;
 - `dotnet build Puntiro.slnx --configuration Release --no-restore` — 0 warnings and 0 errors;
 - `dotnet test tests/Puntiro.UnitTests/Puntiro.UnitTests.csproj --configuration Release --no-build` — 168 passed, 0 failed, 0 skipped;
-- `dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build` against a disposable loopback-only `postgres:17.10-bookworm` instance — 134 passed, 0 failed, 0 skipped;
-- the trusted-proxy integration subset — 4 passed, covering a trusted peer, an untrusted peer with spoofed `X-Forwarded-For`, an empty trust allowlist, and the forbidden platform-wide forwarded-header shortcut;
-- both the database-only and opt-in `cloud-runtime` Compose profiles passed `docker compose config --quiet` with disposable validation-only values supplied by the local process; no values were committed;
-- targeted source/configuration scans found no runtime migration, request/response-body logging, populated committed runtime credentials, or usable integration-token secret.
+- `dotnet test tests/Puntiro.IntegrationTests/Puntiro.IntegrationTests.csproj --configuration Release --no-build` against a disposable loopback-only `postgres:17.10-bookworm` instance — 141 passed, 0 failed, 0 skipped;
+- the trusted-proxy startup/behavior subset — 6 passed, covering a trusted peer, an untrusted peer with spoofed `X-Forwarded-For`, empty trust failure, the forbidden platform shortcut, network-only and combined allowlists; exact environment binder cases added another 5 passing cases;
+- database-only and opt-in `cloud-runtime` Compose configurations passed executable `docker compose config` tests with disposable validation-only values supplied by local files; no values were committed;
+- targeted Git-enumerated source/configuration scans found no runtime migration/service resolution, request/response-body logging, populated repository runtime credentials, or usable raw/base64-encoded integration-token secret. Ignored untracked local files are exempt; force-tracked ignored and non-ignored untracked configuration are scanned.
 
 The immutable GitHub Actions workflow and its pinned runtime/service contract passed local mutation tests. The hosted GitHub Actions workflow itself was **not run** as part of this local validation.
 

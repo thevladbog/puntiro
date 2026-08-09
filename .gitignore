@@ -7,8 +7,12 @@ playwright-report/
 test-results/
 coverage/
 infra/compose/.env.cloud
+infra/compose/.env.cloud.restore
+infra/compose/cloud-runtime.env
+infra/compose/cloud-runtime.restore.env
 infra/compose/cloud-secrets/
 infra/compose/cloud-data-protection-keys/
+infra/compose/cloud-data-protection-keys.restore/
 *.tsbuildinfo
 **/bin/
 **/obj/

@@ -1108,7 +1108,7 @@ git commit -m "feat: expose integration authentication"
 - Create: `infra/compose/.env.cloud.example`
 - Create: `scripts/check-cloud-security.mjs`
 - Create: `scripts/check-cloud-security.test.mjs`
-- Create: `docs/adr/0002-global-identity-and-credentials.md`
+- Create: `docs/adr/0003-global-identity-and-credentials.md`
 - Create: `docs/runbooks/cloud-development.md`
 - Create: `docs/reference/cloud-configuration.md`
 - Create: `docs/reference/cloud-authentication-api.md`

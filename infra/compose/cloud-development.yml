@@ -32,27 +32,25 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:mode=1777
+    env_file:
+      - path: ${PUNTIRO_CLOUD_RUNTIME_ENV_FILE:-./cloud-runtime.env}
+        required: false
+        format: raw
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://0.0.0.0:8080
-      ConnectionStrings__Puntiro: ${ConnectionStrings__Puntiro}
-      Puntiro__Admin__AllowedOrigin: ${Puntiro__Admin__AllowedOrigin}
-      Puntiro__Proxy__Enabled: ${Puntiro__Proxy__Enabled:-false}
-      Puntiro__Proxy__KnownProxies__0: ${Puntiro__Proxy__KnownProxies__0}
-      Puntiro__Proxy__KnownNetworks__0: ${Puntiro__Proxy__KnownNetworks__0}
       Puntiro__Security__DataProtectionKeysPath: /var/lib/puntiro/data-protection-keys
       Puntiro__Security__DataProtectionCertificatePath: /run/puntiro-secrets/data-protection.pfx
-      Puntiro__Security__DataProtectionCertificatePassword: ${Puntiro__Security__DataProtectionCertificatePassword}
-      Puntiro__Security__SessionHmac__CurrentVersion: ${Puntiro__Security__SessionHmac__CurrentVersion}
-      Puntiro__Security__SessionHmac__Keys__v1: ${Puntiro__Security__SessionHmac__Keys__v1}
-      Puntiro__Security__RecoveryHmac__CurrentVersion: ${Puntiro__Security__RecoveryHmac__CurrentVersion}
-      Puntiro__Security__RecoveryHmac__Keys__v1: ${Puntiro__Security__RecoveryHmac__Keys__v1}
-      Puntiro__Security__IntegrationHmac__CurrentVersion: ${Puntiro__Security__IntegrationHmac__CurrentVersion}
-      Puntiro__Security__IntegrationHmac__Keys__v1: ${Puntiro__Security__IntegrationHmac__Keys__v1}
     volumes:
-      - puntiro-cloud-data-protection-keys:/var/lib/puntiro/data-protection-keys
-      - ${Puntiro__Security__DataProtectionCertificateHostPath:-./cloud-secrets/data-protection.pfx}:/run/puntiro-secrets/data-protection.pfx:ro
+      - type: bind
+        source: ${Puntiro__Security__DataProtectionKeysPath:-./cloud-data-protection-keys}
+        target: /var/lib/puntiro/data-protection-keys
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${Puntiro__Security__DataProtectionCertificateHostPath:-./cloud-secrets/data-protection.pfx}
+        target: /run/puntiro-secrets/data-protection.pfx
+        read_only: true
 
 volumes:
   puntiro-cloud-postgres:
-  puntiro-cloud-data-protection-keys:
