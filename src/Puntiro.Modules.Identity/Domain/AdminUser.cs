@@ -27,6 +27,7 @@ internal sealed class AdminUser
         NormalizedEmail = normalizedEmail;
         ProvisioningOrganizationId = provisioningOrganizationId;
         Status = AdminUserStatus.Provisioning;
+        AuthenticationEpoch = 1;
         CreatedAtUtc = EnsureUtc(now);
         UpdatedAtUtc = CreatedAtUtc;
         Version = 1;
@@ -36,6 +37,7 @@ internal sealed class AdminUser
     public string DisplayEmail { get; private set; } = string.Empty;
     public string NormalizedEmail { get; private set; } = string.Empty;
     public AdminUserStatus Status { get; private set; }
+    public long AuthenticationEpoch { get; private set; }
     public Guid? ProvisioningOrganizationId { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset UpdatedAtUtc { get; private set; }
@@ -81,6 +83,18 @@ internal sealed class AdminUser
         }
 
         Status = AdminUserStatus.Suspended;
+        AuthenticationEpoch = checked(AuthenticationEpoch + 1);
+        Touch(now);
+    }
+
+    internal void AdvanceAuthenticationEpoch(DateTimeOffset now)
+    {
+        if (Status != AdminUserStatus.Active)
+        {
+            throw new InvalidOperationException("Only an active account can advance its authentication epoch.");
+        }
+
+        AuthenticationEpoch = checked(AuthenticationEpoch + 1);
         Touch(now);
     }
 
@@ -244,6 +258,7 @@ internal sealed class AdminSession
         byte[] verifier,
         string keyVersion,
         Guid userId,
+        long authenticationEpoch,
         Guid organizationId,
         DateTimeOffset createdAtUtc,
         DateTimeOffset idleExpiresAtUtc,
@@ -255,6 +270,9 @@ internal sealed class AdminSession
         Verifier = (byte[])verifier.Clone();
         KeyVersion = keyVersion;
         UserId = userId;
+        AuthenticationEpoch = authenticationEpoch > 0
+            ? authenticationEpoch
+            : throw new ArgumentOutOfRangeException(nameof(authenticationEpoch));
         ActiveOrganizationId = organizationId;
         CreatedAtUtc = AdminUser.EnsureUtc(createdAtUtc);
         LastSeenAtUtc = CreatedAtUtc;
@@ -271,6 +289,7 @@ internal sealed class AdminSession
     public byte[] Verifier { get; private set; } = [];
     public string KeyVersion { get; private set; } = string.Empty;
     public Guid UserId { get; private set; }
+    public long AuthenticationEpoch { get; private set; }
     public Guid ActiveOrganizationId { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset LastSeenAtUtc { get; private set; }

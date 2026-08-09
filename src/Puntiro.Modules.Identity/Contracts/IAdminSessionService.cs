@@ -29,13 +29,22 @@ public interface IAdminSessionService
     Task<IssuedAdminSession> CreateAsync(
         VerifiedIdentity identity,
         Guid organizationId,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken);
 
     Task<AdminSessionPrincipal?> ValidateAsync(
         string presentedToken,
         CancellationToken cancellationToken);
 
-    Task RevokeAsync(Guid sessionId, string reason, CancellationToken cancellationToken);
+    Task RevokeAsync(
+        Guid sessionId,
+        string reason,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken);
 
-    Task RevokeAllForUserAsync(Guid userId, string reason, CancellationToken cancellationToken);
+    Task RevokeAllForUserAsync(
+        Guid userId,
+        string reason,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken);
 }

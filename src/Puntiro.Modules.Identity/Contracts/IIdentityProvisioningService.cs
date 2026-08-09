@@ -86,20 +86,36 @@ public interface IIdentityProvisioningService
         Guid provisioningOrganizationId,
         string email,
         string password,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken);
 
-    Task ConfirmOwnerTotpAsync(Guid userId, string code, CancellationToken cancellationToken);
+    Task ConfirmOwnerTotpAsync(
+        Guid userId,
+        string code,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken);
 
-    Task CompleteOwnerAsync(Guid userId, Guid organizationId, CancellationToken cancellationToken);
+    Task CompleteOwnerAsync(
+        Guid userId,
+        Guid organizationId,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken);
 
     Task<PendingOwnerTotpReset> PrepareOwnerTotpResetAsync(
         Guid userId,
         string password,
         string recoveryCode,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken);
 
     Task CompleteOwnerTotpResetAsync(
         PendingOwnerTotpReset pending,
         string firstTotpCode,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken);
+
+    Task SuspendAsync(
+        Guid userId,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken);
 }

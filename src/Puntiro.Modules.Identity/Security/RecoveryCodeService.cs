@@ -28,7 +28,14 @@ internal sealed class GeneratedRecoveryCode
     private string DebuggerDisplay => nameof(GeneratedRecoveryCode);
 }
 
-internal sealed class RecoveryCodeService : IDisposable
+internal interface IRecoveryCodeService : IDisposable
+{
+    IReadOnlyList<GeneratedRecoveryCode> GenerateBatch();
+
+    bool Verify(string presentedCode, ReadOnlySpan<byte> expectedVerifier);
+}
+
+internal sealed class RecoveryCodeService : IRecoveryCodeService
 {
     private const int KeyLength = 32;
     private const int RecoveryValueLength = 16;

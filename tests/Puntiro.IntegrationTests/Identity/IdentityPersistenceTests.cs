@@ -39,8 +39,8 @@ public sealed class IdentityPersistenceTests(PostgresDatabase database)
             """
             INSERT INTO identity.admin_users
                 (id, display_email, normalized_email, status,
-                 provisioning_organization_id, created_at, updated_at, version)
-            VALUES ($1, 'Duplicate', 'owner@example.com', 'provisioning', $2, $3, $3, 1)
+                 authentication_epoch, provisioning_organization_id, created_at, updated_at, version)
+            VALUES ($1, 'Duplicate', 'owner@example.com', 'provisioning', 1, $2, $3, $3, 1)
             """;
         duplicate.Parameters.AddWithValue(Guid.CreateVersion7());
         duplicate.Parameters.AddWithValue(Guid.CreateVersion7());
@@ -78,12 +78,54 @@ public sealed class IdentityPersistenceTests(PostgresDatabase database)
             mutation.ExecuteNonQueryAsync(cancellationToken));
         Assert.Equal(PostgresErrorCodes.ObjectNotInPrerequisiteState, error.SqlState);
     }
+
+    [Fact]
+    public async Task Security_events_persist_bounded_trace_actor_and_result_without_credential_text()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var scope = await IdentityTestScope.CreateAsync(database.ConnectionString);
+        var organizationId = Guid.CreateVersion7();
+        var email = IdentityTestScope.UniqueEmail();
+        using var pending = await scope.Provisioning.BeginOwnerAsync(
+            organizationId,
+            email,
+            IdentityTestScope.Password,
+            new IdentityAuditContext(null, "trace:owner-provision-001"),
+            cancellationToken);
+        var secret = IdentityTestScope.ReadTotpSecret(pending.TotpUri);
+        var confirmation = Modules.Identity.Security.Rfc6238Totp.Generate(
+            secret,
+            scope.Time.GetUtcNow().ToUnixTimeSeconds());
+        await scope.Provisioning.ConfirmOwnerTotpAsync(
+            pending.UserId,
+            confirmation,
+            new IdentityAuditContext(pending.UserId, "trace:owner-confirm-001"),
+            cancellationToken);
+
+        var started = await scope.Context.SecurityEvents.AsNoTracking().SingleAsync(
+            item => item.TraceId == "trace:owner-provision-001",
+            cancellationToken);
+        var confirmed = await scope.Context.SecurityEvents.AsNoTracking().SingleAsync(
+            item => item.TraceId == "trace:owner-confirm-001",
+            cancellationToken);
+
+        Assert.Null(started.ActorUserId);
+        Assert.Equal("success", started.Result);
+        Assert.Equal(pending.UserId, confirmed.ActorUserId);
+        Assert.Equal("success", confirmed.Result);
+        var persistedText = string.Join(
+            '|',
+            scope.Context.SecurityEvents.Select(item =>
+                $"{item.TraceId}:{item.EventType}:{item.Result}:{item.ReasonCode}"));
+        Assert.DoesNotContain(email, persistedText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(confirmation, persistedText, StringComparison.Ordinal);
+    }
 }
 
 internal sealed class IdentityTestScope : IAsyncDisposable
 {
     internal const string Password = "correct horse battery staple";
-    private static readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider =
+    internal static readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider DataProtectionProvider =
         new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
     private readonly Modules.Identity.Security.RecoveryCodeService _recoveryCodes;
 
@@ -125,9 +167,7 @@ internal sealed class IdentityTestScope : IAsyncDisposable
         }
 
         var time = new ManualTimeProvider(now ?? new DateTimeOffset(2026, 8, 8, 10, 0, 0, TimeSpan.Zero));
-        var keys = Modules.Identity.Security.IdentityKeyOptions.ForTesting(
-            "session-v1", Enumerable.Repeat((byte)0x51, 32).ToArray(),
-            "recovery-v1", Enumerable.Repeat((byte)0x72, 32).ToArray());
+        var keys = CreateKeys();
         var secrets = new Security.SystemSecretGenerator();
         var hasher = new Modules.Identity.Security.PasswordHasher(secrets);
         var totp = new Modules.Identity.Security.Rfc6238Totp(time, secrets);
@@ -143,7 +183,6 @@ internal sealed class IdentityTestScope : IAsyncDisposable
             recovery,
             protector,
             time,
-            keys.CurrentRecoveryKeyVersion,
             keys,
             secrets);
         var authentication = new Modules.Identity.Services.AdminAuthenticationService(
@@ -151,6 +190,11 @@ internal sealed class IdentityTestScope : IAsyncDisposable
         var sessions = new Modules.Identity.Services.AdminSessionService(context, codec, time);
         return new IdentityTestScope(context, time, provisioning, authentication, sessions, recovery);
     }
+
+    internal static Modules.Identity.Security.IdentityKeyOptions CreateKeys() =>
+        Modules.Identity.Security.IdentityKeyOptions.ForTesting(
+            "session-v1", Enumerable.Repeat((byte)0x51, 32).ToArray(),
+            "recovery-v1", Enumerable.Repeat((byte)0x72, 32).ToArray());
 
     internal async Task<(PendingOwnerIdentity Pending, string TotpSecret, string RecoveryCode)> BeginAsync(
         Guid? organizationId = null,

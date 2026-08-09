@@ -41,10 +41,10 @@ public static class IdentityModule
         }
 
         services.AddScoped<IPasswordHasher, PasswordHasher>();
-        services.AddScoped<Rfc6238Totp>();
+        services.AddScoped<ITotpService, Rfc6238Totp>();
         services.AddScoped<TotpSecretProtector>();
         services.AddScoped<SessionTokenCodec>();
-        services.AddScoped(provider =>
+        services.AddScoped<IRecoveryCodeService>(provider =>
         {
             var options = provider.GetRequiredService<IdentityKeyOptions>();
             var key = options.GetRecoveryKey(options.CurrentRecoveryKeyVersion);

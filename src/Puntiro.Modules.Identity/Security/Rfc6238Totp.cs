@@ -7,7 +7,25 @@ namespace Puntiro.Modules.Identity.Security;
 
 internal readonly record struct AcceptedTotp(long Counter);
 
-internal sealed class Rfc6238Totp
+internal interface ITotpService
+{
+    byte[] GenerateSecret();
+
+    bool TryAccept(
+        ReadOnlySpan<byte> secret,
+        string code,
+        long? lastAcceptedCounter,
+        out AcceptedTotp accepted);
+
+    bool TryAccept(
+        ReadOnlySpan<byte> secret,
+        string code,
+        DateTimeOffset utcNow,
+        long? lastAcceptedCounter,
+        out AcceptedTotp accepted);
+}
+
+internal sealed class Rfc6238Totp : ITotpService
 {
     private const int SecretLength = 20;
     private const int PeriodSeconds = 30;

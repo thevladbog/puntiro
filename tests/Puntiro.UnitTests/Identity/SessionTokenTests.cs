@@ -47,6 +47,20 @@ public sealed class SessionTokenTests
     }
 
     [Fact]
+    public void Parser_rejects_an_uppercase_public_id_even_when_the_secret_and_hmac_are_valid()
+    {
+        var codec = new SessionTokenCodec(
+            IdentityKeyOptions.ForTesting("session-v1", SessionKey, "recovery-v1", new byte[32]),
+            new SystemSecretGenerator());
+        using var issued = codec.Issue();
+        var raw = issued.RawToken.Reveal();
+        var uppercase = raw[..4] + raw.AsSpan(4, 32).ToString().ToUpperInvariant() + raw[36..];
+
+        Assert.False(codec.TryRead(uppercase, out _, out _));
+        Assert.False(codec.Verify(uppercase, issued.PublicId, issued.KeyVersion, issued.Verifier));
+    }
+
+    [Fact]
     public void Identity_keys_reject_cross_purpose_key_reuse()
     {
         var shared = Enumerable.Repeat((byte)0x5a, 32).ToArray();

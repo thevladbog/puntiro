@@ -186,4 +186,85 @@ public sealed class IdentityAuthenticationTests(PostgresDatabase database)
                 reset.RecoveryCodes[0].Reveal()),
             cancellationToken));
     }
+
+    [Fact]
+    public async Task Reset_preparation_clears_the_candidate_totp_when_recovery_batch_generation_fails()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var scope = await IdentityTestScope.CreateAsync(database.ConnectionString);
+        var organizationId = Guid.CreateVersion7();
+        var email = IdentityTestScope.UniqueEmail();
+        using var pending = await scope.Provisioning.BeginOwnerAsync(
+            organizationId,
+            email,
+            IdentityTestScope.Password,
+            cancellationToken);
+        var oldRecovery = pending.RecoveryCodes[0].Reveal();
+        var oldSecret = IdentityTestScope.ReadTotpSecret(pending.TotpUri);
+        var confirmation = Rfc6238Totp.Generate(oldSecret, scope.Time.GetUtcNow().ToUnixTimeSeconds());
+        await scope.Provisioning.ConfirmOwnerTotpAsync(pending.UserId, confirmation, cancellationToken);
+        await scope.Provisioning.CompleteOwnerAsync(pending.UserId, organizationId, cancellationToken);
+
+        var keys = IdentityTestScope.CreateKeys();
+        var secretGenerator = new Puntiro.Security.SystemSecretGenerator();
+        var candidateTotp = new TrackingTotpService();
+        using var faultingRecovery = new FaultingRecoveryService();
+        var service = new Puntiro.Modules.Identity.Services.IdentityProvisioningService(
+            scope.Context,
+            new PasswordHasher(secretGenerator),
+            candidateTotp,
+            faultingRecovery,
+            new Puntiro.Modules.Identity.Security.TotpSecretProtector(
+                IdentityTestScope.DataProtectionProvider),
+            scope.Time,
+            keys,
+            secretGenerator);
+
+        await Assert.ThrowsAsync<ResetSecretAcquisitionException>(() =>
+            service.PrepareOwnerTotpResetAsync(
+                pending.UserId,
+                IdentityTestScope.Password,
+                oldRecovery,
+                new IdentityAuditContext(pending.UserId, "trace-reset-cleanup-001"),
+                cancellationToken));
+
+        Assert.All(candidateTotp.Secret, value => Assert.Equal(0, value));
+    }
+
+    private sealed class TrackingTotpService : ITotpService
+    {
+        internal byte[] Secret { get; } = Enumerable.Repeat((byte)0x63, 20).ToArray();
+
+        public byte[] GenerateSecret() => Secret;
+
+        public bool TryAccept(
+            ReadOnlySpan<byte> secret,
+            string code,
+            long? lastAcceptedCounter,
+            out AcceptedTotp accepted) =>
+            throw new NotSupportedException();
+
+        public bool TryAccept(
+            ReadOnlySpan<byte> secret,
+            string code,
+            DateTimeOffset utcNow,
+            long? lastAcceptedCounter,
+            out AcceptedTotp accepted) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FaultingRecoveryService : IRecoveryCodeService
+    {
+        public IReadOnlyList<GeneratedRecoveryCode> GenerateBatch() =>
+            throw new ResetSecretAcquisitionException();
+
+        public bool Verify(string presentedCode, ReadOnlySpan<byte> expectedVerifier) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class ResetSecretAcquisitionException : Exception;
 }

@@ -23,6 +23,7 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                     display_email = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: false),
                     normalized_email = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: false),
                     status = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    authentication_epoch = table.Column<long>(type: "bigint", nullable: false),
                     provisioning_organization_id = table.Column<Guid>(type: "uuid", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -31,6 +32,7 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_admin_users", x => x.id);
+                    table.CheckConstraint("ck_admin_users_authentication_epoch", "authentication_epoch > 0");
                     table.CheckConstraint("ck_admin_users_status", "status IN ('provisioning', 'active', 'suspended')");
                 });
 
@@ -41,8 +43,10 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     user_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    actor_user_id = table.Column<Guid>(type: "uuid", nullable: true),
                     organization_id = table.Column<Guid>(type: "uuid", nullable: true),
                     session_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    trace_id = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
                     event_type = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
                     result = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     reason_code = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
@@ -117,6 +121,7 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                     verifier = table.Column<byte[]>(type: "bytea", nullable: false),
                     key_version = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    authentication_epoch = table.Column<long>(type: "bigint", nullable: false),
                     active_organization_id = table.Column<Guid>(type: "uuid", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     last_seen_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -130,6 +135,7 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_sessions", x => x.id);
+                    table.CheckConstraint("ck_sessions_authentication_epoch", "authentication_epoch > 0");
                     table.ForeignKey(
                         name: "fk_sessions_admin_users_user_id",
                         column: x => x.user_id,

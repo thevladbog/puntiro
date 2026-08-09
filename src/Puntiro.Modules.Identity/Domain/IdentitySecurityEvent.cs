@@ -9,8 +9,10 @@ internal sealed class IdentitySecurityEvent
     internal IdentitySecurityEvent(
         Guid id,
         Guid? userId,
+        Guid? actorUserId,
         Guid? organizationId,
         Guid? sessionId,
+        string traceId,
         string eventType,
         string result,
         string reasonCode,
@@ -18,8 +20,10 @@ internal sealed class IdentitySecurityEvent
     {
         Id = id;
         UserId = userId;
+        ActorUserId = actorUserId;
         OrganizationId = organizationId;
         SessionId = sessionId;
+        TraceId = traceId;
         EventType = eventType;
         Result = result;
         ReasonCode = reasonCode;
@@ -28,8 +32,10 @@ internal sealed class IdentitySecurityEvent
 
     public Guid Id { get; private set; }
     public Guid? UserId { get; private set; }
+    public Guid? ActorUserId { get; private set; }
     public Guid? OrganizationId { get; private set; }
     public Guid? SessionId { get; private set; }
+    public string TraceId { get; private set; } = string.Empty;
     public string EventType { get; private set; } = string.Empty;
     public string Result { get; private set; } = string.Empty;
     public string ReasonCode { get; private set; } = string.Empty;

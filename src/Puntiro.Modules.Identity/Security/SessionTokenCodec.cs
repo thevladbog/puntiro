@@ -122,6 +122,15 @@ internal sealed class SessionTokenCodec(IdentityKeyOptions keys, ISecretGenerato
             return false;
         }
 
+        Span<char> canonicalPublicId = stackalloc char[PublicIdLength];
+        if (!publicId.TryFormat(canonicalPublicId, out var publicIdWritten, "N") ||
+            publicIdWritten != PublicIdLength ||
+            !token.AsSpan(Prefix.Length, PublicIdLength).SequenceEqual(canonicalPublicId))
+        {
+            publicId = Guid.Empty;
+            return false;
+        }
+
         var decoded = ArrayPool<byte>.Shared.Rent(SecretLength);
         try
         {
@@ -139,6 +148,7 @@ internal sealed class SessionTokenCodec(IdentityKeyOptions keys, ISecretGenerato
         }
         finally
         {
+            canonicalPublicId.Clear();
             CryptographicOperations.ZeroMemory(decoded);
             ArrayPool<byte>.Shared.Return(decoded);
         }

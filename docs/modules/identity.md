@@ -8,17 +8,17 @@ HTTP routes, cookies, antiforgery, rate limiting, membership selection, and the 
 
 The module owns only schema `identity`. Migration `202608080002_InitialIdentity` creates:
 
-- `admin_users`: UUIDv7 ID, display email, exact normalized identity key, `provisioning|active|suspended` status, nullable provisioning organization ID, UTC timestamps, and optimistic-concurrency version;
+- `admin_users`: UUIDv7 ID, display email, exact normalized identity key, `provisioning|active|suspended` status, positive authentication epoch, nullable provisioning organization ID, UTC timestamps, and optimistic-concurrency version;
 - `password_credentials`: one credential per user with salt, Argon2id hash, persisted algorithm parameters, set/rehash timestamps, and version;
 - `totp_credentials`: one credential per user with Data Protection ciphertext, confirmation/replacement timestamps, last accepted RFC 6238 counter, and version;
 - `recovery_codes`: one row per HMAC verifier with batch ID, recovery-key version, issue/use timestamps, and version;
-- `sessions`: UUIDv7 record ID, unique random public ID, versioned HMAC verifier, user and selected organization IDs, idle/absolute timestamps, optional TOTP freshness timestamp, revoke metadata, and version;
-- `security_events`: append-only, bounded, redacted authentication/session events;
+- `sessions`: UUIDv7 record ID, unique random public ID, versioned HMAC verifier, user and selected organization IDs, captured authentication epoch, idle/absolute timestamps, optional TOTP freshness timestamp, revoke metadata, and version;
+- `security_events`: append-only, bounded, redacted authentication/session events with subject, nullable actor, trace ID, result, and reason code;
 - `__EFMigrationsHistory`: migration metadata scoped to `identity`, never `public`.
 
-PostgreSQL enforces the exact unique `normalized_email`, one password/TOTP row per user, unique session public ID, lowercase account states, in-schema foreign keys, and indexes used by recovery, revocation, and expiry paths. EF rejects tracked security-event updates/deletes, and a PostgreSQL trigger rejects direct updates/deletes. Security events contain bounded reason codes and identifiers only: no email, password, TOTP, recovery code, raw session token, HMAC verifier, Data Protection ciphertext, user-agent, or arbitrary caller text.
+PostgreSQL enforces the exact unique `normalized_email`, positive user/session authentication epochs, one password/TOTP row per user, unique session public ID, lowercase account states, in-schema foreign keys, and indexes used by recovery, revocation, and expiry paths. EF rejects tracked security-event updates/deletes, and a PostgreSQL trigger rejects direct updates/deletes. Security events contain bounded reason codes and identifiers only: no email, password, TOTP, recovery code, raw session token, HMAC verifier, Data Protection ciphertext, user-agent, or arbitrary caller text.
 
-All factor acceptance, replay counters, recovery consumption, credential replacement, session revocation, and corresponding security events commit in the same Identity transaction. User-row locks serialize competing TOTP/recovery operations. Session-row locks serialize validation, last-seen extension, and revoke; a caller never receives a session principal from a record observed at or after an expiry boundary.
+All factor acceptance, replay counters, recovery consumption, credential replacement, account suspension, session revocation, and corresponding security events commit in the same Identity transaction. User-row locks serialize competing TOTP/recovery and authentication-epoch operations. Session creation locks and reloads the user, and session validation locks then reloads both user and session; neither path trusts stale EF tracked state. A caller never receives a session principal for an inactive user, a mismatched epoch, a revoked record, or a record observed at or after an expiry boundary.
 
 ## Email identity key
 
@@ -38,7 +38,7 @@ New passwords are validated by Unicode scalar count and strict UTF-8 byte count 
 
 Verification applies a bounded input policy before Argon2 allocation. Unknown, suspended, and otherwise unavailable accounts still execute one current-policy Argon2id verification against a fixed dummy credential before returning the same `null` result used for every credential failure. Public contracts therefore do not reveal whether an email exists or which factor failed.
 
-Salt/hash values are excluded from JSON, debugger, and string representations. Comparisons are constant-time, and temporary derived buffers are cleared where managed memory permits. Password, factor, and credential objects override string representations with type names or redacted output rather than values.
+Salt/hash values are excluded from JSON, debugger, and string representations. `AdminCredentials` is an application object rather than an HTTP DTO: all four fields are explicitly ignored by System.Text.Json, hidden from debugger browsing, and replaced by the type name in string output. Comparisons are constant-time, and temporary derived buffers are cleared where managed memory permits. Password, factor, and credential objects override string representations with type names or redacted output rather than values.
 
 ## TOTP and recovery factors
 
@@ -46,7 +46,9 @@ TOTP follows RFC 6238 with HMAC-SHA-1, six digits, a 30-second period, and deter
 
 Recovery batches contain ten unique 128-bit values rendered as grouped uppercase unpadded Base32. PostgreSQL receives only purpose-bound HMAC-SHA-256 verifier bytes and a recovery key version. Verification selects the recorded version so an explicitly retained old recovery key remains usable during controlled rotation. A recovery login atomically marks exactly one row used and creates a verified identity whose factor is `RecoveryCode`; it never grants fresh TOTP step-up.
 
-Owner TOTP reset is an opaque two-phase contract. Preparation verifies the active account password and an unused old recovery row, but stores no candidate. It returns caller-owned mutable secret output plus an opaque object containing the candidate material and old row version. Completion first validates the new TOTP, then re-locks the user and verifies that the old recovery row is still unused at the captured version. One transaction replaces the TOTP credential and recovery batch, invalidates all old recovery rows, revokes all existing sessions, and appends a redacted event. A failed first code changes no stored credential or session.
+Owner TOTP reset is an opaque two-phase contract. Preparation verifies the active account password and an unused old recovery row, but stores no candidate. It returns caller-owned mutable secret output plus an opaque object containing the candidate material and old row version. Completion first validates the new TOTP, then re-locks and reloads the user and verifies that the old recovery row is still unused at the captured version. One transaction advances the authentication epoch, replaces the TOTP credential and recovery batch, invalidates all old recovery rows, revokes all existing sessions, and appends a redacted event. A failed first code changes no stored credential or session. Account suspension uses the same user-first lock order, advances the epoch, and revokes all sessions in one transaction.
+
+Password hash, TOTP secret, and recovery batch acquisition share one cleanup ownership boundary. A failure at any later acquisition or persistence step clears every earlier mutable derived/secret buffer and disposes every one-time code that was not transferred to the caller. Reset candidate acquisition follows the same rule.
 
 `SensitiveValue` owns mutable characters, clears them on idempotent disposal, and exposes an immutable string only through the explicit `Reveal` boundary. Provisioning/HTTP callers must dispose `PendingOwnerIdentity`, `PendingOwnerTotpReset`, and `IssuedAdminSession` after their one-time output boundary. They must never place revealed values in structured logs, exceptions, command arguments, environment variables, traces, or persisted output.
 
@@ -58,7 +60,7 @@ An issued raw token has canonical form:
 pns_<32 lowercase hex public-id>.<43 character base64url secret>
 ```
 
-The public ID and independent 32-byte secret are generated through `ISecretGenerator`. PostgreSQL stores only the public ID, current session-key version, and `HMAC-SHA-256("Puntiro.Identity.Session.v1" || NUL || public-id || secret)`. Parsing is length-bounded and canonical before database lookup; verification uses the key version on the row and constant-time comparison. A malformed token, missing/retired key, wrong verifier, revoked record, or expired record returns `null` without exposing a provider error.
+The public ID and independent 32-byte secret are generated through `ISecretGenerator`. PostgreSQL stores only the public ID, current session-key version, and `HMAC-SHA-256("Puntiro.Identity.Session.v1" || NUL || public-id || secret)`. Parsing is length-bounded and reformats the public ID before an ordinal comparison, so uppercase, mixed-case, and other non-canonical IDs are rejected before database lookup. Verification uses the key version on the row and constant-time comparison. A malformed token, missing/retired key, wrong verifier, inactive account, stale authentication epoch, revoked record, or expired record returns `null` without exposing a provider error.
 
 Session lifetime is server-authoritative:
 
@@ -69,15 +71,19 @@ Session lifetime is server-authoritative:
 - idle extension is capped by absolute expiry;
 - logout, single revoke, bulk user revoke, and successful TOTP reset take effect immediately.
 
+`VerifiedIdentity` carries the durable authentication epoch read under the factor transaction. Session creation accepts it only when a locked and reloaded active user still has that exact epoch. Every session stores the epoch it was created under; validation rechecks the current active user and epoch. Reset and suspension advance the epoch before committing, so a stale verified identity cannot create a valid post-change session even when creation races the security operation.
+
 TOTP login copies the factor verification time to `second_factor_verified_at`. Recovery login stores `null`. `StepUpTotpAsync` verifies a new replay-protected TOTP counter and returns its accepted UTC time; the Cloud host is responsible for applying that result to its current-session use case and five-minute authorization policy.
 
 ## Application contracts
 
-`IIdentityProvisioningService` provides resumable first-owner identity creation, initial TOTP confirmation, owner activation, and two-phase owner TOTP reset. A provisioning account may be resumed only for the same `provisioning_organization_id`; a different organization, active account, or suspended account fails closed rather than rebinding a global identity.
+`IIdentityProvisioningService` provides resumable first-owner identity creation, initial TOTP confirmation, owner activation, two-phase owner TOTP reset, and atomic account suspension. A provisioning account may be resumed only for the same `provisioning_organization_id`; a different organization, active account, or suspended account fails closed rather than rebinding a global identity.
 
 `IAdminAuthenticationService` verifies password plus exactly one TOTP/recovery factor and performs replay/one-time state transitions. It returns `VerifiedIdentity?`, so every invalid external credential shape and value has the same result. `StepUpTotpAsync` accepts only TOTP.
 
 `IAdminSessionService` creates, validates, revokes one, or revokes every user session. `AdminSessionPrincipal` receives its user and organization identifiers only from the durable verified row. Callers must not treat an organization ID from request input as authorization; the Cloud host must recheck Tenancy.
+
+Every provisioning, authentication, factor-change, session-create, and session-revoke operation that emits an event requires an `IdentityAuditContext`. Its trace ID is 1–128 characters and accepts only ASCII letters, digits, `.`, `_`, `:`, and `-`; an optional actor cannot be the empty GUID. Unauthenticated login uses a null caller actor and derives the actor only after successful authentication. Self-service operations derive the subject as actor when no actor is supplied; administrative suspension/revoke may supply the already-authorized actor. The caller must pass only an opaque correlation ID, never an email, network address, credential, code, token, or arbitrary request text. Session validation deliberately accepts no audit context because it emits no per-request event and must not create an attacker-controlled durable event stream.
 
 ## Key configuration and migrations
 

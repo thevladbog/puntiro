@@ -16,15 +16,28 @@ internal sealed class AdminSessionService(
     public async Task<IssuedAdminSession> CreateAsync(
         VerifiedIdentity identity,
         Guid organizationId,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(auditContext);
         AdminUser.EnsureId(identity.UserId, nameof(identity));
         AdminUser.EnsureId(organizationId, nameof(organizationId));
-        var activeUser = await context.AdminUsers.AsNoTracking().AnyAsync(
-            item => item.Id == identity.UserId && item.Status == AdminUserStatus.Active,
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
             cancellationToken);
-        if (!activeUser)
+        await LockUserAsync(identity.UserId, cancellationToken);
+        var user = await context.AdminUsers.SingleOrDefaultAsync(
+            item => item.Id == identity.UserId,
+            cancellationToken);
+        if (user is not null)
+        {
+            await context.Entry(user).ReloadAsync(cancellationToken);
+        }
+
+        if (user is null ||
+            user.Status != AdminUserStatus.Active ||
+            user.AuthenticationEpoch != identity.AuthenticationEpoch)
         {
             throw new InvalidOperationException("An active admin user is required to create a session.");
         }
@@ -38,6 +51,7 @@ internal sealed class AdminSessionService(
             token.Verifier,
             token.KeyVersion,
             identity.UserId,
+            identity.AuthenticationEpoch,
             organizationId,
             now,
             SessionExpiryPolicy.NextIdleExpiry(now, absolute),
@@ -46,13 +60,16 @@ internal sealed class AdminSessionService(
         context.Sessions.Add(session);
         context.SecurityEvents.Add(Event(
             identity.UserId,
+            auditContext.ActorUserId ?? identity.UserId,
             organizationId,
             session.Id,
+            auditContext.TraceId,
             "session.created",
             "success",
             identity.Factor == VerifiedFactor.Totp ? "totp_login" : "recovery_login",
             now));
         await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new IssuedAdminSession(Principal(session), token.TakeRawToken());
     }
 
@@ -66,14 +83,39 @@ internal sealed class AdminSessionService(
         }
 
         CryptographicOperations.ZeroMemory(parsedSecret);
+        var userId = await context.Sessions.AsNoTracking()
+            .Where(item => item.PublicId == publicId)
+            .Select(item => (Guid?)item.UserId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (userId is null)
+        {
+            return null;
+        }
+
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
+        await LockUserAsync(userId.Value, cancellationToken);
         await LockSessionAsync(publicId, cancellationToken);
         var session = await context.Sessions.SingleOrDefaultAsync(
             item => item.PublicId == publicId,
             cancellationToken);
-        if (session is null ||
+        var user = await context.AdminUsers.SingleOrDefaultAsync(
+            item => item.Id == userId.Value,
+            cancellationToken);
+        if (session is not null)
+        {
+            await context.Entry(session).ReloadAsync(cancellationToken);
+        }
+
+        if (user is not null)
+        {
+            await context.Entry(user).ReloadAsync(cancellationToken);
+        }
+
+        if (session is null || user is null ||
+            user.Status != AdminUserStatus.Active ||
+            session.AuthenticationEpoch != user.AuthenticationEpoch ||
             !tokenCodec.Verify(presentedToken, session.PublicId, session.KeyVersion, session.Verifier))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -104,9 +146,11 @@ internal sealed class AdminSessionService(
     public async Task RevokeAsync(
         Guid sessionId,
         string reason,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(sessionId, nameof(sessionId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         var safeReason = ValidateReason(reason);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
@@ -117,14 +161,17 @@ internal sealed class AdminSessionService(
         var session = await context.Sessions.SingleOrDefaultAsync(
             item => item.Id == sessionId,
             cancellationToken) ?? throw new KeyNotFoundException("Session was not found.");
+        await context.Entry(session).ReloadAsync(cancellationToken);
         if (session.RevokedAtUtc is null)
         {
             var now = timeProvider.GetUtcNow();
             session.Revoke(now, safeReason);
             context.SecurityEvents.Add(Event(
                 session.UserId,
+                auditContext.ActorUserId ?? session.UserId,
                 session.ActiveOrganizationId,
                 session.Id,
+                auditContext.TraceId,
                 "session.revoked",
                 "success",
                 safeReason,
@@ -138,9 +185,11 @@ internal sealed class AdminSessionService(
     public async Task RevokeAllForUserAsync(
         Guid userId,
         string reason,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(userId, nameof(userId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         var safeReason = ValidateReason(reason);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
@@ -164,8 +213,10 @@ internal sealed class AdminSessionService(
 
             context.SecurityEvents.Add(Event(
                 userId,
+                auditContext.ActorUserId ?? userId,
                 null,
                 null,
+                auditContext.TraceId,
                 "session.revoked_all",
                 "success",
                 safeReason,
@@ -179,6 +230,11 @@ internal sealed class AdminSessionService(
     private Task<int> LockSessionAsync(Guid publicId, CancellationToken cancellationToken) =>
         context.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT id FROM identity.sessions WHERE public_id = {publicId} FOR UPDATE",
+            cancellationToken);
+
+    private Task<int> LockUserAsync(Guid userId, CancellationToken cancellationToken) =>
+        context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM identity.admin_users WHERE id = {userId} FOR UPDATE",
             cancellationToken);
 
     private static AdminSessionPrincipal Principal(AdminSession session) =>
@@ -204,11 +260,23 @@ internal sealed class AdminSessionService(
 
     private static IdentitySecurityEvent Event(
         Guid? userId,
+        Guid? actorUserId,
         Guid? organizationId,
         Guid? sessionId,
+        string traceId,
         string eventType,
         string result,
         string reasonCode,
         DateTimeOffset now) =>
-        new(Guid.CreateVersion7(), userId, organizationId, sessionId, eventType, result, reasonCode, now);
+        new(
+            Guid.CreateVersion7(),
+            userId,
+            actorUserId,
+            organizationId,
+            sessionId,
+            traceId,
+            eventType,
+            result,
+            reasonCode,
+            now);
 }

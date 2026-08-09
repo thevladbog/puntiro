@@ -11,7 +11,7 @@ namespace Puntiro.Modules.Identity.Services;
 internal sealed class AdminAuthenticationService(
     IdentityDbContext context,
     IPasswordHasher passwordHasher,
-    Rfc6238Totp totp,
+    ITotpService totp,
     TotpSecretProtector totpProtector,
     TimeProvider timeProvider,
     IdentityKeyOptions keyOptions,
@@ -27,9 +27,11 @@ internal sealed class AdminAuthenticationService(
 
     public async Task<VerifiedIdentity?> VerifyAsync(
         AdminCredentials credentials,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(auditContext);
         var hasTotp = !string.IsNullOrEmpty(credentials.TotpCode);
         var hasRecovery = !string.IsNullOrEmpty(credentials.RecoveryCode);
         var exactlyOneFactor = hasTotp ^ hasRecovery;
@@ -61,6 +63,7 @@ internal sealed class AdminAuthenticationService(
             await AppendFailureAsync(
                 user?.Id,
                 user is null ? "account_unavailable" : "account_inactive",
+                auditContext,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return null;
@@ -74,7 +77,7 @@ internal sealed class AdminAuthenticationService(
                 credentials.Password ?? string.Empty,
                 DummyCredential,
                 cancellationToken);
-            await AppendFailureAsync(user.Id, "account_inactive", cancellationToken);
+            await AppendFailureAsync(user.Id, "account_inactive", auditContext, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return null;
         }
@@ -82,6 +85,7 @@ internal sealed class AdminAuthenticationService(
         var credential = await context.PasswordCredentials.SingleAsync(
             item => item.UserId == user.Id,
             cancellationToken);
+        await context.Entry(credential).ReloadAsync(cancellationToken);
         var snapshot = credential.Snapshot();
         PasswordVerification passwordResult;
         try
@@ -102,6 +106,7 @@ internal sealed class AdminAuthenticationService(
             await AppendFailureAsync(
                 user.Id,
                 passwordResult == PasswordVerification.Failed ? "password_invalid" : "factor_shape_invalid",
+                auditContext,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return null;
@@ -110,10 +115,15 @@ internal sealed class AdminAuthenticationService(
         var now = timeProvider.GetUtcNow();
         VerifiedFactor? factor = hasTotp
             ? await TryAcceptTotpAsync(user.Id, credentials.TotpCode!, now, cancellationToken)
-            : await TryUseRecoveryAsync(user.Id, credentials.RecoveryCode!, now, cancellationToken);
+            : await TryUseRecoveryAsync(
+                user.Id,
+                credentials.RecoveryCode!,
+                now,
+                auditContext.TraceId,
+                cancellationToken);
         if (factor is null)
         {
-            await AppendFailureAsync(user.Id, "factor_invalid", cancellationToken);
+            await AppendFailureAsync(user.Id, "factor_invalid", auditContext, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return null;
         }
@@ -134,21 +144,25 @@ internal sealed class AdminAuthenticationService(
 
         context.SecurityEvents.Add(Event(
             user.Id,
+            user.Id,
+            auditContext.TraceId,
             "authentication.login",
             "success",
             factor == VerifiedFactor.Totp ? "totp_accepted" : "recovery_accepted",
             now));
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new VerifiedIdentity(user.Id, factor.Value, now);
+        return new VerifiedIdentity(user.Id, user.AuthenticationEpoch, factor.Value, now);
     }
 
     public async Task<DateTimeOffset?> StepUpTotpAsync(
         Guid userId,
         string code,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(userId, nameof(userId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
@@ -166,6 +180,8 @@ internal sealed class AdminAuthenticationService(
         var factor = await TryAcceptTotpAsync(userId, code, now, cancellationToken);
         context.SecurityEvents.Add(Event(
             userId,
+            auditContext.ActorUserId ?? userId,
+            auditContext.TraceId,
             "authentication.step_up",
             factor is null ? "failure" : "success",
             factor is null ? "factor_invalid" : "totp_accepted",
@@ -184,6 +200,7 @@ internal sealed class AdminAuthenticationService(
         var credential = await context.TotpCredentials.SingleAsync(
             item => item.UserId == userId,
             cancellationToken);
+        await context.Entry(credential).ReloadAsync(cancellationToken);
         if (credential.ConfirmedAtUtc is null)
         {
             return null;
@@ -210,6 +227,7 @@ internal sealed class AdminAuthenticationService(
         Guid userId,
         string code,
         DateTimeOffset now,
+        string traceId,
         CancellationToken cancellationToken)
     {
         var available = await context.RecoveryCodes
@@ -231,6 +249,8 @@ internal sealed class AdminAuthenticationService(
         match.Use(now);
         context.SecurityEvents.Add(Event(
             userId,
+            userId,
+            traceId,
             "recovery_code.used",
             "success",
             "login_factor",
@@ -241,10 +261,13 @@ internal sealed class AdminAuthenticationService(
     private async Task AppendFailureAsync(
         Guid? userId,
         string reasonCode,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         context.SecurityEvents.Add(Event(
             userId,
+            null,
+            auditContext.TraceId,
             "authentication.login",
             "failure",
             reasonCode,
@@ -259,11 +282,23 @@ internal sealed class AdminAuthenticationService(
 
     private static IdentitySecurityEvent Event(
         Guid? userId,
+        Guid? actorUserId,
+        string? auditContext,
         string eventType,
         string result,
         string reasonCode,
         DateTimeOffset now) =>
-        new(Guid.CreateVersion7(), userId, null, null, eventType, result, reasonCode, now);
+        new(
+            Guid.CreateVersion7(),
+            userId,
+            actorUserId,
+            null,
+            null,
+            auditContext ?? throw new InvalidOperationException("Audit trace was not supplied."),
+            eventType,
+            result,
+            reasonCode,
+            now);
 
     private bool VerifyRecovery(string keyVersion, string code, ReadOnlySpan<byte> verifier)
     {

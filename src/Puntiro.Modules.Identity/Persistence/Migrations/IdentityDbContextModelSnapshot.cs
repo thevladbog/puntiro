@@ -37,6 +37,10 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("active_organization_id");
 
+                    b.Property<long>("AuthenticationEpoch")
+                        .HasColumnType("bigint")
+                        .HasColumnName("authentication_epoch");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -99,7 +103,10 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                     b.HasIndex("UserId", "RevokedAtUtc")
                         .HasDatabaseName("ix_sessions_user_revoked_at");
 
-                    b.ToTable("sessions", "identity");
+                    b.ToTable("sessions", "identity", t =>
+                        {
+                            t.HasCheckConstraint("ck_sessions_authentication_epoch", "authentication_epoch > 0");
+                        });
                 });
 
             modelBuilder.Entity("Puntiro.Modules.Identity.Domain.AdminUser", b =>
@@ -111,6 +118,10 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<long>("AuthenticationEpoch")
+                        .HasColumnType("bigint")
+                        .HasColumnName("authentication_epoch");
 
                     b.Property<string>("DisplayEmail")
                         .IsRequired()
@@ -155,12 +166,18 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
 
                     b.ToTable("admin_users", "identity", t =>
                         {
+                            t.HasCheckConstraint("ck_admin_users_authentication_epoch", "authentication_epoch > 0");
+
                             t.HasCheckConstraint("ck_admin_users_status", "status IN ('provisioning', 'active', 'suspended')");
                         });
                 });
 
             modelBuilder.Entity("Puntiro.Modules.Identity.Domain.IdentitySecurityEvent", b =>
                 {
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
@@ -194,6 +211,12 @@ namespace Puntiro.Modules.Identity.Persistence.Migrations
                     b.Property<Guid?>("SessionId")
                         .HasColumnType("uuid")
                         .HasColumnName("session_id");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("trace_id");
 
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uuid")

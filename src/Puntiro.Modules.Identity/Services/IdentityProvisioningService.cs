@@ -13,11 +13,10 @@ namespace Puntiro.Modules.Identity.Services;
 internal sealed class IdentityProvisioningService(
     IdentityDbContext context,
     IPasswordHasher passwordHasher,
-    Rfc6238Totp totp,
-    RecoveryCodeService recoveryCodeService,
+    ITotpService totp,
+    IRecoveryCodeService recoveryCodeService,
     TotpSecretProtector totpProtector,
     TimeProvider timeProvider,
-    string currentRecoveryKeyVersion,
     IdentityKeyOptions keyOptions,
     ISecretGenerator secretGenerator) : IIdentityProvisioningService
 {
@@ -25,18 +24,23 @@ internal sealed class IdentityProvisioningService(
         Guid provisioningOrganizationId,
         string email,
         string password,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(provisioningOrganizationId, nameof(provisioningOrganizationId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         var address = EmailAddress.Normalize(email);
-        var passwordHash = await passwordHasher.HashAsync(password, cancellationToken);
-        var rawTotpSecret = totp.GenerateSecret();
-        var generatedRecovery = recoveryCodeService.GenerateBatch();
-        var batchId = Guid.CreateVersion7();
+        PasswordHash? passwordHash = null;
+        byte[]? rawTotpSecret = null;
+        IReadOnlyList<GeneratedRecoveryCode>? generatedRecovery = null;
         PendingOwnerIdentity? result = null;
 
         try
         {
+            passwordHash = await passwordHasher.HashAsync(password, cancellationToken);
+            rawTotpSecret = totp.GenerateSecret();
+            generatedRecovery = recoveryCodeService.GenerateBatch();
+            var batchId = Guid.CreateVersion7();
             await using var transaction = await context.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable,
                 cancellationToken);
@@ -44,7 +48,6 @@ internal sealed class IdentityProvisioningService(
                 item => item.NormalizedEmail == address.Normalized,
                 cancellationToken);
             var now = timeProvider.GetUtcNow();
-            byte[] protectedSecret;
             if (user is null)
             {
                 user = AdminUser.StartProvisioning(
@@ -55,8 +58,15 @@ internal sealed class IdentityProvisioningService(
                     now);
                 context.AdminUsers.Add(user);
                 context.PasswordCredentials.Add(new PasswordCredential(user.Id, passwordHash, now));
-                protectedSecret = totpProtector.Protect(user.Id, rawTotpSecret);
-                context.TotpCredentials.Add(new TotpCredential(user.Id, protectedSecret, now));
+                var protectedSecret = totpProtector.Protect(user.Id, rawTotpSecret);
+                try
+                {
+                    context.TotpCredentials.Add(new TotpCredential(user.Id, protectedSecret, now));
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(protectedSecret);
+                }
             }
             else
             {
@@ -73,11 +83,18 @@ internal sealed class IdentityProvisioningService(
                     item => item.UserId == user.Id,
                     cancellationToken);
                 passwordCredential.Replace(passwordHash, now);
-                protectedSecret = totpProtector.Protect(user.Id, rawTotpSecret);
+                var protectedSecret = totpProtector.Protect(user.Id, rawTotpSecret);
                 var totpCredential = await context.TotpCredentials.SingleAsync(
                     item => item.UserId == user.Id,
                     cancellationToken);
-                totpCredential.Replace(protectedSecret, now);
+                try
+                {
+                    totpCredential.Replace(protectedSecret, now);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(protectedSecret);
+                }
                 var oldRecovery = await context.RecoveryCodes
                     .Where(item => item.UserId == user.Id)
                     .ToListAsync(cancellationToken);
@@ -92,7 +109,6 @@ internal sealed class IdentityProvisioningService(
                 }
             }
 
-            CryptographicOperations.ZeroMemory(protectedSecret);
             foreach (var generated in generatedRecovery)
             {
                 context.RecoveryCodes.Add(new RecoveryCode(
@@ -100,14 +116,16 @@ internal sealed class IdentityProvisioningService(
                     user.Id,
                     batchId,
                     generated.Verifier,
-                    currentRecoveryKeyVersion,
+                    keyOptions.CurrentRecoveryKeyVersion,
                     now));
             }
 
             context.SecurityEvents.Add(Event(
                 user.Id,
+                auditContext.ActorUserId,
                 provisioningOrganizationId,
                 null,
+                auditContext.TraceId,
                 "owner.provisioning_started",
                 "success",
                 "pending_factor_issued",
@@ -134,9 +152,17 @@ internal sealed class IdentityProvisioningService(
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(rawTotpSecret);
-            ClearPasswordHash(passwordHash);
-            if (result is null)
+            if (rawTotpSecret is not null)
+            {
+                CryptographicOperations.ZeroMemory(rawTotpSecret);
+            }
+
+            if (passwordHash is not null)
+            {
+                ClearPasswordHash(passwordHash);
+            }
+
+            if (result is null && generatedRecovery is not null)
             {
                 foreach (var item in generatedRecovery)
                 {
@@ -144,9 +170,12 @@ internal sealed class IdentityProvisioningService(
                 }
             }
 
-            foreach (var item in generatedRecovery)
+            if (generatedRecovery is not null)
             {
-                CryptographicOperations.ZeroMemory(item.Verifier);
+                foreach (var item in generatedRecovery)
+                {
+                    CryptographicOperations.ZeroMemory(item.Verifier);
+                }
             }
         }
     }
@@ -154,15 +183,18 @@ internal sealed class IdentityProvisioningService(
     public async Task ConfirmOwnerTotpAsync(
         Guid userId,
         string code,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(userId, nameof(userId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
         await LockUserAsync(userId, cancellationToken);
         var user = await context.AdminUsers.SingleOrDefaultAsync(item => item.Id == userId, cancellationToken)
             ?? throw new KeyNotFoundException("Owner account was not found.");
+        await context.Entry(user).ReloadAsync(cancellationToken);
         if (user.Status != AdminUserStatus.Provisioning)
         {
             throw new InvalidOperationException("Only a provisioning owner can confirm TOTP.");
@@ -171,6 +203,7 @@ internal sealed class IdentityProvisioningService(
         var credential = await context.TotpCredentials.SingleAsync(
             item => item.UserId == userId,
             cancellationToken);
+        await context.Entry(credential).ReloadAsync(cancellationToken);
         var secret = totpProtector.Unprotect(userId, credential.ProtectedSecret);
         try
         {
@@ -183,8 +216,10 @@ internal sealed class IdentityProvisioningService(
             credential.Accept(accepted.Counter, now, confirm: true);
             context.SecurityEvents.Add(Event(
                 userId,
+                auditContext.ActorUserId ?? userId,
                 user.ProvisioningOrganizationId,
                 null,
+                auditContext.TraceId,
                 "owner.totp_confirmed",
                 "success",
                 "factor_confirmed",
@@ -201,16 +236,19 @@ internal sealed class IdentityProvisioningService(
     public async Task CompleteOwnerAsync(
         Guid userId,
         Guid organizationId,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(userId, nameof(userId));
         AdminUser.EnsureId(organizationId, nameof(organizationId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         await using var transaction = await context.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             cancellationToken);
         await LockUserAsync(userId, cancellationToken);
         var user = await context.AdminUsers.SingleOrDefaultAsync(item => item.Id == userId, cancellationToken)
             ?? throw new KeyNotFoundException("Owner account was not found.");
+        await context.Entry(user).ReloadAsync(cancellationToken);
         if (user.Status == AdminUserStatus.Active)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -229,8 +267,10 @@ internal sealed class IdentityProvisioningService(
         user.Activate(organizationId, now);
         context.SecurityEvents.Add(Event(
             userId,
+            auditContext.ActorUserId ?? userId,
             organizationId,
             null,
+            auditContext.TraceId,
             "owner.activated",
             "success",
             "provisioning_completed",
@@ -243,9 +283,11 @@ internal sealed class IdentityProvisioningService(
         Guid userId,
         string password,
         string recoveryCode,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         AdminUser.EnsureId(userId, nameof(userId));
+        ArgumentNullException.ThrowIfNull(auditContext);
         var user = await context.AdminUsers.AsNoTracking().SingleOrDefaultAsync(
             item => item.Id == userId && item.Status == AdminUserStatus.Active,
             cancellationToken) ?? throw new InvalidOperationException("Owner credentials are invalid.");
@@ -280,10 +322,12 @@ internal sealed class IdentityProvisioningService(
             throw new InvalidOperationException("Owner credentials are invalid.");
         }
 
-        var secret = totp.GenerateSecret();
-        var generated = recoveryCodeService.GenerateBatch();
+        byte[]? secret = null;
+        IReadOnlyList<GeneratedRecoveryCode>? generated = null;
         try
         {
+            secret = totp.GenerateSecret();
+            generated = recoveryCodeService.GenerateBatch();
             return new PendingOwnerTotpReset
             {
                 UserId = userId,
@@ -294,16 +338,23 @@ internal sealed class IdentityProvisioningService(
                 CandidateBatchId = Guid.CreateVersion7(),
                 VerifiedRecoveryCodeId = verified.Id,
                 VerifiedRecoveryCodeVersion = verified.Version,
-                RecoveryKeyVersion = currentRecoveryKeyVersion
+                RecoveryKeyVersion = keyOptions.CurrentRecoveryKeyVersion
             };
         }
         catch
         {
-            CryptographicOperations.ZeroMemory(secret);
-            foreach (var item in generated)
+            if (secret is not null)
             {
-                item.Code.Dispose();
-                CryptographicOperations.ZeroMemory(item.Verifier);
+                CryptographicOperations.ZeroMemory(secret);
+            }
+
+            if (generated is not null)
+            {
+                foreach (var item in generated)
+                {
+                    item.Code.Dispose();
+                    CryptographicOperations.ZeroMemory(item.Verifier);
+                }
             }
 
             throw;
@@ -313,9 +364,11 @@ internal sealed class IdentityProvisioningService(
     public async Task CompleteOwnerTotpResetAsync(
         PendingOwnerTotpReset pending,
         string firstTotpCode,
+        IdentityAuditContext auditContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(pending);
+        ArgumentNullException.ThrowIfNull(auditContext);
         pending.ThrowIfDisposed();
         if (!totp.TryAccept(pending.CandidateSecret, firstTotpCode, null, out var accepted))
         {
@@ -338,12 +391,14 @@ internal sealed class IdentityProvisioningService(
         }
 
         var user = await context.AdminUsers.SingleAsync(item => item.Id == pending.UserId, cancellationToken);
+        await context.Entry(user).ReloadAsync(cancellationToken);
         if (user.Status != AdminUserStatus.Active)
         {
             throw new InvalidOperationException("The recovery authorization is no longer valid.");
         }
 
         var now = timeProvider.GetUtcNow();
+        user.AdvanceAuthenticationEpoch(now);
         var protectedSecret = totpProtector.Protect(pending.UserId, pending.CandidateSecret);
         try
         {
@@ -384,11 +439,59 @@ internal sealed class IdentityProvisioningService(
 
         context.SecurityEvents.Add(Event(
             pending.UserId,
+            auditContext.ActorUserId ?? pending.UserId,
             null,
             null,
+            auditContext.TraceId,
             "owner.totp_reset",
             "success",
             "credentials_replaced",
+            now));
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task SuspendAsync(
+        Guid userId,
+        IdentityAuditContext auditContext,
+        CancellationToken cancellationToken)
+    {
+        AdminUser.EnsureId(userId, nameof(userId));
+        ArgumentNullException.ThrowIfNull(auditContext);
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+        await LockUserAsync(userId, cancellationToken);
+        var user = await context.AdminUsers.SingleOrDefaultAsync(
+            item => item.Id == userId,
+            cancellationToken) ?? throw new KeyNotFoundException("Owner account was not found.");
+        await context.Entry(user).ReloadAsync(cancellationToken);
+        if (user.Status == AdminUserStatus.Suspended)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        user.Suspend(now);
+        await LockActiveSessionsForUserAsync(userId, cancellationToken);
+        var sessions = await context.Sessions
+            .Where(item => item.UserId == userId && item.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+        {
+            session.Revoke(now, "account_suspended");
+        }
+
+        context.SecurityEvents.Add(Event(
+            userId,
+            auditContext.ActorUserId,
+            null,
+            null,
+            auditContext.TraceId,
+            "owner.suspended",
+            "success",
+            "account_suspended",
             now));
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -408,13 +511,25 @@ internal sealed class IdentityProvisioningService(
 
     private static IdentitySecurityEvent Event(
         Guid? userId,
+        Guid? actorUserId,
         Guid? organizationId,
         Guid? sessionId,
+        string traceId,
         string eventType,
         string result,
         string reasonCode,
         DateTimeOffset now) =>
-        new(Guid.CreateVersion7(), userId, organizationId, sessionId, eventType, result, reasonCode, now);
+        new(
+            Guid.CreateVersion7(),
+            userId,
+            actorUserId,
+            organizationId,
+            sessionId,
+            traceId,
+            eventType,
+            result,
+            reasonCode,
+            now);
 
     private static SensitiveValue CreateTotpUri(string displayEmail, ReadOnlySpan<byte> secret)
     {
