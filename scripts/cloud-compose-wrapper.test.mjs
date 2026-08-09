@@ -9,7 +9,11 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const wrapper = path.join(root, 'scripts', 'cloud-compose.mjs');
 
-async function wrapperFixture(t, { dotnetExit = 0, useComposeDefaults = false } = {}) {
+async function wrapperFixture(t, {
+  dotnetExit = 0,
+  omitNormalizedBindPolicy = false,
+  useComposeDefaults = false,
+} = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'puntiro-cloud-wrapper-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const bin = path.join(directory, 'bin');
@@ -83,8 +87,19 @@ async function wrapperFixture(t, { dotnetExit = 0, useComposeDefaults = false } 
           ASPNETCORE_URLS: 'http://0.0.0.0:8080',
         },
         volumes: [
-          { type: 'bind', source: ring, target: '/var/lib/puntiro/data-protection-keys', bind: { create_host_path: false } },
-          { type: 'bind', source: certificate, target: '/run/puntiro-secrets/data-protection.pfx', read_only: true, bind: { create_host_path: false } },
+          {
+            type: 'bind',
+            source: ring,
+            target: '/var/lib/puntiro/data-protection-keys',
+            ...(omitNormalizedBindPolicy ? {} : { bind: { create_host_path: false } }),
+          },
+          {
+            type: 'bind',
+            source: certificate,
+            target: '/run/puntiro-secrets/data-protection.pfx',
+            read_only: true,
+            ...(omitNormalizedBindPolicy ? {} : { bind: { create_host_path: false } }),
+          },
         ],
       },
     },
@@ -168,6 +183,14 @@ test('verifies the documented local image and PostgreSQL port defaults', async t
     'docker-operation',
   ]);
   assert.equal(calls[0].hostPort, '5432');
+});
+
+test('accepts Compose implementations that omit explicit false bind policy from normalized JSON', async t => {
+  const fixture = await wrapperFixture(t, { omitNormalizedBindPolicy: true });
+
+  const result = runWrapper(fixture, 'normal', 'up-cloud');
+
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test('uses the same checked wrapper before starting isolated restore PostgreSQL', async t => {

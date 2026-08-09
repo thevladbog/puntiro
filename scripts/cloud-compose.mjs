@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadCloudEnvFiles } from './cloud-env.mjs';
@@ -52,6 +53,23 @@ function assertEqual(actual, expected) {
   if (String(actual) !== String(expected)) throw new Error('Resolved Compose contract differs from validated input.');
 }
 
+export function verifyBindCreationPolicy(source) {
+  const bindBlocks = [...source.matchAll(
+    /^\s{6}-\s+type:\s*bind\s*$((?:(?!^\s{6}-\s+type:)[\s\S]){0,600})/gm,
+  )].map(match => match[1]);
+  for (const target of [
+    '/var/lib/puntiro/data-protection-keys',
+    '/run/puntiro-secrets/data-protection.pfx',
+  ]) {
+    const matching = bindBlocks.filter(block =>
+      new RegExp(`^\\s+target:\\s*${target.replaceAll('/', '\\/')}\\s*$`, 'm').test(block));
+    if (matching.length !== 1 ||
+        !/^\s+bind:\s*$[\s\S]*?^\s+create_host_path:\s*false\s*$/m.test(matching[0])) {
+      throw new Error('Compose bind mounts must explicitly disable host-path creation.');
+    }
+  }
+}
+
 function verifyResolvedCompose(resolved, compose, runtime) {
   const cloud = resolved?.services?.cloud;
   const postgres = resolved?.services?.postgres;
@@ -88,14 +106,18 @@ function verifyResolvedCompose(resolved, compose, runtime) {
     item.target === '/run/puntiro-secrets/data-protection.pfx');
   assertEqual(ring?.type, 'bind');
   assertEqual(ring?.source, runtime.get('Puntiro__Security__DataProtectionKeysPath'));
-  assertEqual(ring?.bind?.create_host_path, false);
+  if (ring?.bind?.create_host_path !== undefined) {
+    assertEqual(ring.bind.create_host_path, false);
+  }
   assertEqual(certificate?.type, 'bind');
   assertEqual(
     certificate?.source,
     compose.get('Puntiro__Security__DataProtectionCertificateHostPath'),
   );
   assertEqual(certificate?.read_only, true);
-  assertEqual(certificate?.bind?.create_host_path, false);
+  if (certificate?.bind?.create_host_path !== undefined) {
+    assertEqual(certificate.bind.create_host_path, false);
+  }
 }
 
 export async function runCloudCompose(argv) {
@@ -103,6 +125,7 @@ export async function runCloudCompose(argv) {
     argumentsFrom(argv);
   const compose = await loadCloudEnvFiles([composeEnvPath]);
   const runtime = await loadCloudEnvFiles([runtimeEnvPath]);
+  verifyBindCreationPolicy(await readFile(composeFile, 'utf8'));
   const environment = sanitizedCloudEnvironment();
   const preflight = mode === 'restore'
     ? [

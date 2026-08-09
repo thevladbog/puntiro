@@ -1,13 +1,23 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { verifyBindCreationPolicy } from './cloud-compose.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const composePath = path.join(root, 'infra', 'compose', 'cloud-development.yml');
+
+test('source policy rejects bind mounts that can auto-create secret paths', async () => {
+  const source = await readFile(composePath, 'utf8');
+
+  assert.throws(
+    () => verifyBindCreationPolicy(source.replace('create_host_path: false', 'create_host_path: true')),
+    /explicitly disable host-path creation/,
+  );
+});
 
 test('database-only configuration needs no Cloud runtime env file and keeps Cloud opt-in', async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'puntiro-postgres-compose-'));
@@ -175,6 +185,7 @@ test('all retained versioned HMAC variables pass through without enumerating ver
 
 test('Cloud bind-mounts the same host Data Protection ring and certificate used by provisioning', async t => {
   const { certificatePath, cloud, ringPath } = await resolvedCloud(t);
+  verifyBindCreationPolicy(await readFile(composePath, 'utf8'));
   const ring = cloud.volumes.find(volume =>
     volume.target === '/var/lib/puntiro/data-protection-keys');
   const certificate = cloud.volumes.find(volume =>
@@ -183,7 +194,7 @@ test('Cloud bind-mounts the same host Data Protection ring and certificate used 
   assert.equal(ring.type, 'bind');
   assert.equal(ring.source, ringPath);
   assert.equal(ring.target, '/var/lib/puntiro/data-protection-keys');
-  assert.equal(ring.bind.create_host_path, false);
+  assert.notEqual(ring.bind?.create_host_path, true);
   assert.equal(
     cloud.environment.Puntiro__Security__DataProtectionKeysPath,
     '/var/lib/puntiro/data-protection-keys',
@@ -191,7 +202,7 @@ test('Cloud bind-mounts the same host Data Protection ring and certificate used 
   assert.equal(certificate.type, 'bind');
   assert.equal(certificate.source, certificatePath);
   assert.equal(certificate.read_only, true);
-  assert.equal(certificate.bind.create_host_path, false);
+  assert.notEqual(certificate.bind?.create_host_path, true);
   assert.equal(
     cloud.environment.Puntiro__Security__DataProtectionCertificatePath,
     '/run/puntiro-secrets/data-protection.pfx',
