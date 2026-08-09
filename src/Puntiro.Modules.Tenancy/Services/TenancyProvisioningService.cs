@@ -11,6 +11,17 @@ internal sealed class TenancyProvisioningService(
     TenancyDbContext context,
     TimeProvider timeProvider) : ITenancyProvisioningService
 {
+    public async Task<Guid?> FindOrganizationIdForTrustedProvisioningAsync(
+        string slug,
+        CancellationToken cancellationToken)
+    {
+        var normalized = OrganizationSlug.Normalize(slug).Value;
+        return await context.Organizations.AsNoTracking()
+            .Where(item => item.Slug == normalized)
+            .Select(item => (Guid?)item.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<OrganizationSnapshot> GetOrCreateProvisioningAsync(
         string displayName,
         string slug,

@@ -79,6 +79,8 @@ TOTP login copies the factor verification time to `second_factor_verified_at`. R
 
 `IIdentityProvisioningService` provides resumable first-owner identity creation, initial TOTP confirmation, owner activation, two-phase owner TOTP reset, and atomic account suspension. A provisioning account may be resumed only for the same `provisioning_organization_id`; a different organization, active account, or suspended account fails closed rather than rebinding a global identity.
 
+`FindUserIdForTrustedProvisioningAsync` is a non-mutating normalized-email lookup for the non-public provisioning/recovery composition only. It returns only an optional opaque user ID and never authenticates, consumes a factor, changes a session, or appends an event. HTTP handlers must not expose it as an account-discovery response. Recovery authorization remains entirely inside `PrepareOwnerTotpResetAsync` and its atomic completion path.
+
 `IAdminAuthenticationService` verifies password plus exactly one TOTP/recovery factor and performs replay/one-time state transitions. It returns `VerifiedIdentity?`, so every invalid external credential shape and value has the same result. `StepUpTotpAsync` accepts only TOTP.
 
 `IAdminSessionService` creates, validates, revokes one, or revokes every user session. `AdminSessionPrincipal` receives its user and organization identifiers only from the durable verified row. Callers must not treat an organization ID from request input as authorization; the Cloud host must recheck Tenancy.
@@ -88,6 +90,21 @@ Every provisioning, authentication, factor-change, session-create, and session-r
 ## Key configuration and migrations
 
 `IdentityKeyOptions` requires separate 32-byte versioned key sets for session and recovery HMAC purposes. Current versions must be present and new records always use them; retained versions verify older rows. The options object and every credential/token model have redacted string/debugger output. Reusing a session key as a recovery, integration-token, Data Protection, or rate-limit key is forbidden.
+
+Cloud and the private provisioning CLI share these deployment configuration names; values come only from the approved secret source:
+
+```text
+ConnectionStrings__Puntiro
+Puntiro__Security__DataProtectionKeysPath
+Puntiro__Security__DataProtectionCertificatePath
+Puntiro__Security__DataProtectionCertificatePassword
+Puntiro__Security__SessionHmac__CurrentVersion
+Puntiro__Security__SessionHmac__Keys__<version>
+Puntiro__Security__RecoveryHmac__CurrentVersion
+Puntiro__Security__RecoveryHmac__Keys__<version>
+```
+
+HMAC values are base64 encodings of exactly 32 random bytes. Every retained version needed by a stored verifier must remain configured; the current version must be present in its corresponding key set.
 
 `AddIdentityModule` registers the Identity context and services, but deployment composition owns durable Data Protection configuration. Cloud and provisioning must use the same persistent key ring and application name, protect the ring with the configured deployment certificate, and fail readiness when the directory, certificate, current versioned keys, or required historical keys are unavailable. Losing a Data Protection or HMAC key is an incident, not a normal reset path.
 

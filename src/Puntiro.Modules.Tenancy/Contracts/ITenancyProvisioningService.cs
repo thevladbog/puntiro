@@ -4,6 +4,10 @@ namespace Puntiro.Modules.Tenancy.Contracts;
 
 public interface ITenancyProvisioningService
 {
+    Task<Guid?> FindOrganizationIdForTrustedProvisioningAsync(
+        string slug,
+        CancellationToken cancellationToken);
+
     Task<OrganizationSnapshot> GetOrCreateProvisioningAsync(
         string displayName,
         string slug,

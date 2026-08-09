@@ -20,6 +20,17 @@ internal sealed class IdentityProvisioningService(
     IdentityKeyOptions keyOptions,
     ISecretGenerator secretGenerator) : IIdentityProvisioningService
 {
+    public async Task<Guid?> FindUserIdForTrustedProvisioningAsync(
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var normalized = EmailAddress.Normalize(email).Normalized;
+        return await context.AdminUsers.AsNoTracking()
+            .Where(item => item.NormalizedEmail == normalized)
+            .Select(item => (Guid?)item.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<PendingOwnerIdentity> BeginOwnerAsync(
         Guid provisioningOrganizationId,
         string email,
@@ -47,6 +58,16 @@ internal sealed class IdentityProvisioningService(
             var user = await context.AdminUsers.SingleOrDefaultAsync(
                 item => item.NormalizedEmail == address.Normalized,
                 cancellationToken);
+            var differentPendingIdentityExists = await context.AdminUsers.AnyAsync(
+                item => item.ProvisioningOrganizationId == provisioningOrganizationId &&
+                    item.NormalizedEmail != address.Normalized,
+                cancellationToken);
+            if (differentPendingIdentityExists)
+            {
+                throw new InvalidOperationException(
+                    "The owner email cannot be used for this provisioning operation.");
+            }
+
             var now = timeProvider.GetUtcNow();
             if (user is null)
             {

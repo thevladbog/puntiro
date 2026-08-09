@@ -24,12 +24,15 @@ public sealed class IdentityPersistenceTests(PostgresDatabase database)
             scope.Provisioning.BeginOwnerAsync(
                 Guid.CreateVersion7(), " owner@example.com ", IdentityTestScope.Password, cancellationToken));
 
-        var schemas = await scope.Context.Database.SqlQueryRaw<string>(
-                "SELECT DISTINCT table_schema AS \"Value\" FROM information_schema.tables " +
-                "WHERE table_name IN ('admin_users','password_credentials','totp_credentials'," +
-                "'recovery_codes','sessions','security_events')")
+        var tables = await scope.Context.Database.SqlQueryRaw<string>(
+                "SELECT table_name AS \"Value\" FROM information_schema.tables " +
+                "WHERE table_schema = 'identity' AND table_name IN " +
+                "('admin_users','password_credentials','totp_credentials'," +
+                "'recovery_codes','sessions','security_events') ORDER BY table_name")
             .ToListAsync(cancellationToken);
-        Assert.Equal(["identity"], schemas);
+        Assert.Equal(
+            ["admin_users", "password_credentials", "recovery_codes", "security_events", "sessions", "totp_credentials"],
+            tables);
         Assert.Empty(await scope.Context.Database.GetPendingMigrationsAsync(cancellationToken));
 
         await using var connection = new NpgsqlConnection(database.ConnectionString);

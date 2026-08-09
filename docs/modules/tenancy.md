@@ -33,6 +33,7 @@ An active organization must always retain at least one active owner. `RevokeOwne
 
 `ITenancyProvisioningService` provides:
 
+- non-mutating normalized-slug lookup returning only an optional organization ID for trusted non-public provisioning/recovery composition;
 - create-or-find provisioning organization by normalized slug;
 - idempotent owner membership creation;
 - owner membership revocation that preserves the active-organization owner invariant;
@@ -50,6 +51,8 @@ Activation and owner revocation use a PostgreSQL `ReadCommitted` transaction and
 - `IsActiveOwnerAsync` verifies both active owner membership and active organization state.
 
 The Cloud host will translate the selection exception to `409 auth.organization_selection_required`. Request body, query, or header organization IDs are not proof of tenant access.
+
+`FindOrganizationIdForTrustedProvisioningAsync` does not create an organization, change lifecycle state, or append an event. It exists only so the private CLI can bind its operator-supplied slug before `ITenantAccessService` verifies active ownership; HTTP handlers must not treat the optional ID as authorization or expose it as organization discovery.
 
 ## Configuration and migrations
 

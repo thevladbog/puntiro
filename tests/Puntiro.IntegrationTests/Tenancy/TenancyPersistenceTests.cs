@@ -190,7 +190,8 @@ public sealed class TenancyPersistenceTests(PostgresDatabase database)
         command.CommandText = """
             SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_name IN (
+            WHERE table_schema = 'tenancy'
+              AND table_name IN (
                 'organizations',
                 'memberships',
                 'security_events',

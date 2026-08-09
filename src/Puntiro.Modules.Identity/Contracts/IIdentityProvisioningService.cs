@@ -82,6 +82,10 @@ public sealed class PendingOwnerTotpReset : IDisposable
 
 public interface IIdentityProvisioningService
 {
+    Task<Guid?> FindUserIdForTrustedProvisioningAsync(
+        string email,
+        CancellationToken cancellationToken);
+
     Task<PendingOwnerIdentity> BeginOwnerAsync(
         Guid provisioningOrganizationId,
         string email,

@@ -24,6 +24,8 @@
 ## Runbooks
 
 - [Development bootstrap](runbooks/development-bootstrap.md)
+- [First owner provisioning](runbooks/first-owner-provisioning.md)
+- [Owner TOTP recovery](runbooks/owner-totp-recovery.md)
 
 ## Engineering Validation
 

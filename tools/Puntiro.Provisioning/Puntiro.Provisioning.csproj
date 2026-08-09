@@ -6,4 +6,7 @@
     <ProjectReference Include="../../src/Puntiro.Modules.Identity/Puntiro.Modules.Identity.csproj" />
     <ProjectReference Include="../../src/Puntiro.Modules.Tenancy/Puntiro.Modules.Tenancy.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>
